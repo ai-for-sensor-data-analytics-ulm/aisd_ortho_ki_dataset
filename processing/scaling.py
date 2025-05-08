@@ -63,7 +63,7 @@ def scale_model_with_markers(measurement_path, path_template_model, path_templat
     models_path = ik_path / 'models'
     scaled_model_name = f'scaled_model_{subject_name}_{exercise}.osim'
     scaled_model_initial_pose_name = f'scaled_model_initial_pose_{subject_name}_{exercise}.osim'
-    pose_file_name = f'{subject_name}_scaled_initial_pose.mot'
+    pose_file_name = f'scaled_initial_pose_{subject_name}_{exercise}.mot'
 
     os.makedirs(ik_path / 'models', exist_ok=True)
 
@@ -79,7 +79,7 @@ def scale_model_with_markers(measurement_path, path_template_model, path_templat
         path_scaled_model_w_markers=f'{os.sep}models{os.sep}{scaled_model_initial_pose_name}',
         path_trc_file=f'{os.sep}marker_data_osim_format_{subject_name}_{exercise}.trc',
         path_output_mot_file=f'{os.sep}results_scaling{os.sep}{pose_file_name}',
-        path_output_marker_file=f'{os.sep}results_scaling{os.sep}{subject_name}_scaled_markers.xml',
+        path_output_marker_file=f'{os.sep}results_scaling{os.sep}scaled_markers_{subject_name}_{exercise}.xml',
         time_range=f' {start_ts} {start_ts + 0.015}',
         no_ik_for=cfg['scaling']['no_ik_for'],
         no_scaling_for=cfg['scaling']['no_scaling_for']
