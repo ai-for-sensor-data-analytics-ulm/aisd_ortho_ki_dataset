@@ -1,40 +1,98 @@
-import yaml
+import argparse
 from pathlib import Path
-from tqdm import tqdm
 import helper_fcts as hf
-import scaling
-import imu_inverse_kinematics
+import logging
+from imu_inverse_kinematics import perform_inverse_kinematics_w_imu_data
+from scaling import scale_model_with_markers
 import json
 import os
+import yaml
+from tqdm import tqdm
+def load_config(config_path: Path) -> dict:
+    """Load YAML configuration file."""
+    with open(config_path, 'r') as f:
+        return yaml.safe_load(f)
 
-##### SETTINGS #########################################################################################################
-PATH_TEMPLATE_MODEL = Path('../opensim_templates/model_template/Unrestricted_Full_Body_Model.osim')
-PATH_TEMPLATE_SCALING_SETTINGS = Path('../opensim_templates/template_scaling_settings.xml')
-IMU_SAMPLERATE = 100
 
-##### CODE ##
-all_paths = hf.get_all_folder_paths('../data')
-all_paths = hf.filter_paths_by_subpaths(all_paths, [
-    'ce', f'{os.sep}ee'])
-# all_paths = hf.filter_paths_by_subpaths(all_paths, [
-#     'jung-hee/ee'])
-all_paths = sorted(hf.remove_paths_with_patterns(all_paths, ['ik_imus']))
-# all_paths = sorted(hf.remove_paths_with_patterns(all_paths, ['ik_imus', 'austra', 'darryl', 'elodie', 'erna',  'etsuko', 'gregers', 'hamit', 'hans', 'julia']))
+def process_subject(measurement_dir: Path, cfg: dict):
+    """Runs the processing pipeline for a single subject + exercise."""
+    subject_name = hf.extract_subject_name_from_path(measurement_dir)
+    exercise = hf.extract_exercise_from_path(measurement_dir)
 
-for p in tqdm(all_paths):
-    subject_name = hf.extract_subject_name_from_path(p)
-    exercise = hf.extract_exercise_from_path(p)
-    with open(Path(p) / f'metadata_{subject_name}_{exercise}.json', 'r') as stream:
+    with open(Path(measurement_dir) / f'metadata_{subject_name}_{exercise}.json', 'r') as stream:
         processing_config = json.load(stream)
-    # scaling.scale_model_with_markers(measurement_path=Path(p),
-    #                                  path_template_model=PATH_TEMPLATE_MODEL,
-    #                                  path_template_scaling_settings=PATH_TEMPLATE_SCALING_SETTINGS,
-    #                                  cfg=processing_config,
-    #                                  subject_name=subject_name,
-    #                                  exercise=exercise)
-    imu_inverse_kinematics.perform_inverse_kinematics_w_imu_data(measurement_path=Path(p),
-                                                                 cfg=processing_config,
-                                                                 imu_sample_rate=IMU_SAMPLERATE,
-                                                                 subject_name=subject_name,
-                                                                exercise=exercise)
 
+    try:
+        scale_model_with_markers(measurement_path=measurement_dir,
+                                 path_template_model=Path(cfg['path_template_model']),
+                                 path_template_scaling_settings=Path(cfg['path_template_scaling_settings']),
+                                 cfg=processing_config,
+                                 subject_name=subject_name,
+                                 exercise=exercise)
+
+        perform_inverse_kinematics_w_imu_data(measurement_path=measurement_dir,
+                                              cfg=processing_config,
+                                              imu_sample_rate=cfg['imu_samplerate'],
+                                              subject_name=subject_name,
+                                              exercise=exercise)
+
+        logging.info(f"✅ {subject_name}/{exercise} processed")
+    except Exception as e:
+        logging.error(f"❌ Error processing {subject_name}/{exercise}: {e}")
+
+
+def run_batch_pipeline(root_path: Path, config_path: Path):
+    """Batch-processes all subjects/exercises in a root directory."""
+    cfg = load_config(config_path)
+
+    all_paths = hf.get_all_folder_paths(root_path)
+
+    subpath_filter = []
+    match cfg['process_exercises']:
+        case 'all':
+            subpath_filter = ['gwo', f'{os.sep}ng', 'rd', 'rgs']
+        case _:
+            for subpath in cfg['process_exercises']:
+                if subpath not in ['gwo', 'ng', 'rd', 'rgs']:
+                    raise ValueError(f"Invalid exercise type: {subpath}")
+                else:
+                    if subpath in ['gwo', 'rd', 'rgs']:
+                        subpath_filter.append(subpath)
+                    else:
+                        subpath_filter.append(f'{os.sep}{subpath}')
+    all_paths = hf.filter_paths_by_subpaths(all_paths, subpath_filter)
+
+    match cfg['process_subjects']:
+        case 'all':
+            pass
+        case _:
+            all_paths = hf.filter_paths_by_subpaths(all_paths, cfg['process_subjects'])
+
+    all_paths = sorted(hf.remove_paths_with_patterns(all_paths, ['ik_imus']))
+    print('Starting batch processing ...')
+    for measurement_dir in tqdm(all_paths):
+        measurement_dir = Path(measurement_dir)
+        if not measurement_dir.is_dir():
+            continue
+        logging.info(f"➡️ Processing {measurement_dir} ...")
+        process_subject(measurement_dir, cfg)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Run batch processing pipeline.")
+    parser.add_argument("--root", type=Path, required=True, help="Root directory containing subject/exercise folders")
+    parser.add_argument("--config", type=Path, required=True, help="Path to YAML config file")
+    parser.add_argument("--log", type=Path, default=None, help="Optional log file path")
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    args = parse_args()
+
+    logging.basicConfig(
+        filename=str(args.log) if args.log else None,
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s"
+    )
+
+    run_batch_pipeline(args.root, args.config)

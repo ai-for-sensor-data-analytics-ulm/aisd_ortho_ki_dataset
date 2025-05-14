@@ -10,6 +10,7 @@ import pickle as pkl
 import json
 import yaml
 from tqdm import tqdm
+import processing.helper_fcts as hfp
 
 def read_trc_file(filename):
 
@@ -48,9 +49,14 @@ def read_trc_file(filename):
         return measured_data
 
 
-def extract_marker_coordinates(marker_data, marker_name, pos):
-    return marker_data[[f'{marker_name}_{axis}' for axis in ['x', 'y', 'z']]].iloc[pos].to_numpy()
+# def extract_marker_coordinates(marker_data, marker_name, pos):
+#     return marker_data[[f'{marker_name}_{axis}' for axis in ['x', 'y', 'z']]].iloc[pos].to_numpy()
 
+def extract_marker_coordinates(marker_data, marker_name, pos=None):
+    if pos is None:
+        return marker_data[[f'{marker_name}_{axis}' for axis in ['x', 'y', 'z']]].to_numpy()
+    else:
+        return marker_data[[f'{marker_name}_{axis}' for axis in ['x', 'y', 'z']]].iloc[pos].to_numpy()
 
 def calculate_heading_correction(marker_data, marker_names, R_imu, pos):
     i = 0
@@ -81,35 +87,90 @@ def calculate_heading_correction(marker_data, marker_names, R_imu, pos):
     q_heading_correction = R.from_euler('y', euler[0], degrees=True)
     return q_heading_correction
 
-def calculate_difference(marker_data, marker_names, R_imu, pos, i=0):
-   # i = 0
+
+# def calculate_orientation_deviation(marker_data, marker_names, R_imu, pos, i=0):
+#    # i = 0
+#     if pos == 'toes_r':
+#         imu_marker_1 = extract_marker_coordinates(marker_data, marker_names[0], i)
+#         imu_marker_extra_2 = extract_marker_coordinates(marker_data, marker_names[1], i)
+#         imu_marker_3 = extract_marker_coordinates(marker_data, marker_names[2], i)
+#         imu_marker_21 = imu_marker_1 - imu_marker_extra_2
+#         imu_marker_2 = imu_marker_extra_2 + imu_marker_21 / 2
+#     else:
+#         imu_marker_1 = extract_marker_coordinates(marker_data, marker_names[0], i)
+#         imu_marker_2 = extract_marker_coordinates(marker_data, marker_names[1], i)
+#         imu_marker_3 = extract_marker_coordinates(marker_data, marker_names[2], i)
+#     if any(imu_marker_1 == 0.0) or any(imu_marker_2 == 0.0) or any(imu_marker_3 == 0.0):
+#         return 0.0, np.array([0, 0, 0, 0])
+#     marker_x_axis = imu_marker_1 - imu_marker_2
+#     marker_y_axis = imu_marker_3 - imu_marker_2
+#     marker_z_axis = np.cross(marker_x_axis, marker_y_axis)
+#     marker_x_axis = marker_x_axis / np.linalg.norm(marker_x_axis)
+#     marker_y_axis = marker_y_axis / np.linalg.norm(marker_y_axis)
+#     marker_z_axis = marker_z_axis / np.linalg.norm(marker_z_axis)
+#     imu_marker_cs = np.array([marker_x_axis, marker_y_axis, marker_z_axis]).T
+#     qualisys_cs = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]]).T
+#     R_imu_marker = R.from_matrix(np.matmul(np.linalg.inv(qualisys_cs), imu_marker_cs))
+#     quat_imu_marker = np.array([R_imu_marker.as_quat()])
+#
+#     # Reihenfolge wird von rnl angewendet -> erst von imu zu cs, dann von cs zu marker
+#     q_diff = R_imu_marker * R_imu.inv()
+#     return np.linalg.norm(q_diff.as_rotvec(degrees=True)), R_imu_marker.as_quat()
+
+def fix_marker_coordinate_zeros(marker_coordinates):
+
+    indices = np.argwhere(marker_coordinates == 0.0)
+    if len(indices) == 0:
+        return marker_coordinates, []
+    else:
+        zero_ind = sorted(list(set(indices[:,0])))
+        for ind in zero_ind:
+            marker_coordinates[ind, :] = marker_coordinates[ind-1, :]
+        return marker_coordinates, zero_ind
+
+
+def calculate_orientation_deviation(marker_data, marker_names, R_imu, pos):
+    error_indices = []
     if pos == 'toes_r':
-        imu_marker_1 = extract_marker_coordinates(marker_data, marker_names[0], i)
-        imu_marker_extra_2 = extract_marker_coordinates(marker_data, marker_names[1], i)
-        imu_marker_3 = extract_marker_coordinates(marker_data, marker_names[2], i)
+        imu_marker_1 = extract_marker_coordinates(marker_data, marker_names[0])
+        imu_marker_extra_2 = extract_marker_coordinates(marker_data, marker_names[1])
+        imu_marker_3 = extract_marker_coordinates(marker_data, marker_names[2])
         imu_marker_21 = imu_marker_1 - imu_marker_extra_2
         imu_marker_2 = imu_marker_extra_2 + imu_marker_21 / 2
     else:
-        imu_marker_1 = extract_marker_coordinates(marker_data, marker_names[0], i)
-        imu_marker_2 = extract_marker_coordinates(marker_data, marker_names[1], i)
-        imu_marker_3 = extract_marker_coordinates(marker_data, marker_names[2], i)
-    if any(imu_marker_1 == 0.0) or any(imu_marker_2 == 0.0) or any(imu_marker_3 == 0.0):
-        return 0.0
+        imu_marker_1 = extract_marker_coordinates(marker_data, marker_names[0])
+        imu_marker_2 = extract_marker_coordinates(marker_data, marker_names[1])
+        imu_marker_3 = extract_marker_coordinates(marker_data, marker_names[2])
+    if np.any(imu_marker_1 == 0.0) or np.any(imu_marker_2 == 0.0) or np.any(imu_marker_3 == 0.0):
+        imu_marker_1, error_ind = fix_marker_coordinate_zeros(imu_marker_1)
+        error_indices += error_ind
+        imu_marker_2, error_ind = fix_marker_coordinate_zeros(imu_marker_2)
+        error_indices += error_ind
+        imu_marker_3, error_ind = fix_marker_coordinate_zeros(imu_marker_3)
+        error_indices += error_ind
     marker_x_axis = imu_marker_1 - imu_marker_2
     marker_y_axis = imu_marker_3 - imu_marker_2
     marker_z_axis = np.cross(marker_x_axis, marker_y_axis)
-    marker_x_axis = marker_x_axis / np.linalg.norm(marker_x_axis)
-    marker_y_axis = marker_y_axis / np.linalg.norm(marker_y_axis)
-    marker_z_axis = marker_z_axis / np.linalg.norm(marker_z_axis)
-    imu_marker_cs = np.array([marker_x_axis, marker_y_axis, marker_z_axis]).T
-    qualisys_cs = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]]).T
-    R_imu_marker = R.from_matrix(np.matmul(np.linalg.inv(qualisys_cs), imu_marker_cs))
-    quat_imu_marker = np.array([R_imu_marker.as_quat()])
+    marker_x_axis = marker_x_axis / np.linalg.norm(marker_x_axis, axis=1).reshape(-1,1)
+    marker_y_axis = marker_y_axis / np.linalg.norm(marker_y_axis, axis=1).reshape(-1,1)
+    marker_z_axis = marker_z_axis / np.linalg.norm(marker_z_axis, axis=1).reshape(-1,1)
+    # imu_marker_cs = np.array([marker_x_axis, marker_y_axis, marker_z_axis]).T
+    imu_marker_cs = np.zeros((marker_x_axis.shape[0], 3,3))
+    for i in range(marker_x_axis.shape[0]):
+        imu_marker_cs[i, :, 0] = marker_x_axis[i,:]
+        imu_marker_cs[i, :, 1] = marker_y_axis[i, :]
+        imu_marker_cs[i, :, 2] = marker_z_axis[i, :]
+    qualisys_cs = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+    qualisys_cs = np.tile(qualisys_cs, (marker_x_axis.shape[0], 1, 1))
+    R_imu_marker = R.from_matrix(np.matmul(qualisys_cs, imu_marker_cs))
 
+    # check if Orientation length is the same
+    min_length = min(len(R_imu_marker), len(R_imu))
+    R_imu_marker = R_imu_marker[:min_length]
+    R_imu = R_imu[:min_length]
     # Reihenfolge wird von rnl angewendet -> erst von imu zu cs, dann von cs zu marker
     q_diff = R_imu_marker * R_imu.inv()
-    return np.linalg.norm(q_diff.as_rotvec(degrees=True))
-
+    return np.linalg.norm(q_diff.as_rotvec(degrees=True), axis=1), R_imu_marker.as_quat(), R_imu.as_quat(), error_indices
 
 def extract_segment_orientations(model_path):
     model = osim.Model(model_path)
@@ -135,34 +196,19 @@ def perform_inverse_kinematics_w_imu_data(measurement_path, cfg, imu_sample_rate
 
     ##### CREATE PATHS ETC ############################################################################################################
     ik_dir = measurement_path / 'ik_imus'
-    modelFileName = ik_dir / 'models' / f'scaled_model_initial_pose_{subject_name}_{exercise}.osim'
-    resultsDirectory = ik_dir / 'results_imu_ik'
-
-    final_quat_data = []
-    positions = []
 
     # load and preprocess marker data
     marker_data = read_trc_file(str(ik_dir / f'marker_data_osim_format_{subject_name}_{exercise}.trc'))
     marker_data = marker_data[(marker_data['Time'] >= start_ts)]
 
-    # load and preprocess IMU data
-    # imus_data = np.load(p/ 'XSens' / 'xsens_data.npy', allow_pickle=True).item()
-    # for imu_name, imu_d in imus_data.items():
-    #     for axis_name, l in imu_d.items():
-    #         imus_data[imu_name][axis_name] = l[int(start_ts * imu_sample_rate):]
-
     imus_data = pd.read_csv(measurement_path / f'xsens_imu_data_{subject_name}_{exercise}.csv', sep=',')
-    time = imus_data['time [s]'][imus_data['time [s]'] >= start_ts].to_numpy()
-    stop_ts = time[-1]
+    imus_data = imus_data[(imus_data['time [s]'] >= start_ts)]
+    time = imus_data['time [s]'].to_numpy()
     quat_data = pd.DataFrame()
     quat_data['time'] = time
 
-    # segment_orientations = extract_segment_orientations(str(modelFileName))
-
     registered_imu_data = {}
-    for j, (pos, infos) in enumerate(cfg['inverse_kinematics'].items()):
-        # if j == 5:
-        #     break
+    for j, (pos, infos) in tqdm(enumerate(cfg['inverse_kinematics'].items())):
         imu_data = imus_data[[f'{infos["imu_name"]}_{axis}' for axis in ['QX', 'QY', 'QZ', 'QW']]].to_numpy()
         R_imu = R.from_quat(imu_data)
 
@@ -174,63 +220,46 @@ def perform_inverse_kinematics_w_imu_data(measurement_path, cfg, imu_sample_rate
         # 2. IMU Transformation: apply heading correction
         R_imu_correct_heading = q_heading_correction * R_imu
 
-        deviations_angles = []
-        for i, imu_rot in enumerate(tqdm(R_imu_correct_heading)):
-            if i > marker_data.shape[0] -1:
-                continue
-            deviations_angles.append(calculate_difference(marker_data, infos['marker_names'], imu_rot, pos, i=i))
+        deviation_angles, marker_orientations, imu_orientations, error_indices = calculate_orientation_deviation(marker_data, infos['marker_names'], R_imu_correct_heading, pos)
 
-        registered_imu_data[pos] = deviations_angles
+        # # 3. calculate deviation
+        # deviations_angles = []
+        # marker_orientations = []
+        # for i, imu_rot in enumerate(R_imu_correct_heading):
+        #     if i > marker_data.shape[0] -1:
+        #         continue
+        #     dev_angle, marker_or = calculate_orientation_deviation(marker_data, infos['marker_names'], imu_rot, pos, i=i)
+        #     deviations_angles.append(dev_angle)
+        #     marker_orientations.append(marker_or)
 
 
-    pkl.dump(registered_imu_data, open(measurement_path / 'imu_marker_deviations.pkl', 'wb'))
-    debug = True
+        registered_imu_data[pos] = {'deviations_angles': deviation_angles, 'marker_orientations': marker_orientations, 'imu_orientations': imu_orientations, 'error_indices': error_indices}
 
-    # col_names = []
-    # df_data = []
-    # for pos, quat in registered_imu_data.items():
-    #     col_names += [f'{cfg["inverse_kinematics"][pos]["imu_name"]}_{axis}' for axis in ['QX', 'QY', 'QZ', 'QW']]
-    #     df_data += [list(quat[:,i] )for i in range(4)]
-    # imu_df = pd.DataFrame(np.array(df_data).T, columns=col_names)
-    # imu_df['time [s]'] = time
-    # imu_df = imu_df[['time [s]'] + col_names]
-    # imu_df.to_csv(str(measurement_path / f'xsens_imu_data_segment_registered_{subject_name}_{exercise}.csv'), index=False)
-    #
-    #
-    # ##### Write to .sto file ############################################################################################################
-    # header = ['DataRate=100', '\nDataType=Quaternion', '\nversion=3',
-    #           '\nOpenSimVersion=4.3-2021-08-27-4bc7ad9', '\nendheader\n']
-    #
-    # for pos, quat in registered_imu_data.items():
-    #     str_rep_quat = []
-    #     for i in range(len(time)):
-    #         str_rep_quat.append(f'{quat[i,3]}, {quat[i,0]}, {quat[i,1]}, {quat[i,2]}')
-    #     quat_data[f'{pos}'] = str_rep_quat
-    # quat_file_name = f'segment_registered_imu_data_{subject_name}_{exercise}.sto'
-    # hf.write_to_mot_file(quat_data, header=header, filepath=resultsDirectory, filename=quat_file_name)
-    #
-    #
-    # ##### Run IMU IK ############################################################################################################
-    # imuIK = osim.IMUInverseKinematicsTool()
-    # imuIK.set_model_file(str(modelFileName))
-    # imuIK.set_orientations_file(str(resultsDirectory / quat_file_name))
-    # imuIK.set_results_directory(str(resultsDirectory))
-    # imuIK.set_time_range(0, start_ts)
-    # imuIK.set_time_range(1, stop_ts)
-    # imuIK.run(False)
+
+    pkl.dump(registered_imu_data, open(measurement_path / 'imu_marker_deviations_second_version.pkl', 'wb'))
 
 
     #####
-subject_name = 'darryl'
-exercise = 'ce'
-p = f'../data/{subject_name}/{exercise}/'
-IMU_SAMPLERATE = 100
 
-with open(Path(p) / f'metadata_{subject_name}_{exercise}.json', 'r') as stream:
-    processing_config = json.load(stream)
-perform_inverse_kinematics_w_imu_data(measurement_path=Path(p),
-                                                                 cfg=processing_config,
-                                                                 imu_sample_rate=IMU_SAMPLERATE,
-                                                                 subject_name=subject_name,
-                                                                exercise=exercise)
+all_paths = hf.get_all_folder_paths('../data')
+all_paths = hf.filter_paths_by_subpaths(all_paths, [
+    'ce', f'{os.sep}ee'])
+# all_paths = hf.filter_paths_by_subpaths(all_paths, [
+#     'jung-hee/ee'])
+# all_paths = sorted(hf.remove_paths_with_patterns(all_paths, ['ik_imus']))
+all_paths = sorted(hf.remove_paths_with_patterns(all_paths, ['ik_imus']))
+
+for p in tqdm(all_paths):
+    subject_name = hfp.extract_subject_name_from_path(p)
+    exercise = hfp.extract_exercise_from_path(p)
+    p = f'../data/{subject_name}/{exercise}/'
+    IMU_SAMPLERATE = 100
+
+    with open(Path(p) / f'metadata_{subject_name}_{exercise}.json', 'r') as stream:
+        processing_config = json.load(stream)
+    perform_inverse_kinematics_w_imu_data(measurement_path=Path(p),
+                                                                     cfg=processing_config,
+                                                                     imu_sample_rate=IMU_SAMPLERATE,
+                                                                     subject_name=subject_name,
+                                                                    exercise=exercise)
 
