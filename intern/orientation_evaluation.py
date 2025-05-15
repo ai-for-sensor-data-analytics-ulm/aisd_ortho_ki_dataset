@@ -11,6 +11,7 @@ import json
 import yaml
 from tqdm import tqdm
 import processing.helper_fcts as hfp
+from processing.imu_inverse_kinematics import calculate_heading_correction
 
 def read_trc_file(filename):
 
@@ -58,64 +59,7 @@ def extract_marker_coordinates(marker_data, marker_name, pos=None):
     else:
         return marker_data[[f'{marker_name}_{axis}' for axis in ['x', 'y', 'z']]].iloc[pos].to_numpy()
 
-def calculate_heading_correction(marker_data, marker_names, R_imu, pos):
-    i = 0
-    if pos == 'toes_r':
-        imu_marker_1 = extract_marker_coordinates(marker_data, marker_names[0], i)
-        imu_marker_extra_2 = extract_marker_coordinates(marker_data, marker_names[1], i)
-        imu_marker_3 = extract_marker_coordinates(marker_data, marker_names[2], i)
-        imu_marker_21 = imu_marker_1 - imu_marker_extra_2
-        imu_marker_2 = imu_marker_extra_2 + imu_marker_21 / 2
-    else:
-        imu_marker_1 = extract_marker_coordinates(marker_data, marker_names[0], i)
-        imu_marker_2 = extract_marker_coordinates(marker_data, marker_names[1], i)
-        imu_marker_3 = extract_marker_coordinates(marker_data, marker_names[2], i)
-    marker_x_axis = imu_marker_1 - imu_marker_2
-    marker_y_axis = imu_marker_3 - imu_marker_2
-    marker_z_axis = np.cross(marker_x_axis, marker_y_axis)
-    marker_x_axis = marker_x_axis / np.linalg.norm(marker_x_axis)
-    marker_y_axis = marker_y_axis / np.linalg.norm(marker_y_axis)
-    marker_z_axis = marker_z_axis / np.linalg.norm(marker_z_axis)
-    imu_cs = np.array([marker_x_axis, marker_y_axis, marker_z_axis]).T
-    qualisys_cs = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]]).T
-    R_imu_qualisys = R.from_matrix(np.matmul(np.linalg.inv(qualisys_cs), imu_cs))
-    quat_marker_data = np.array([R_imu_qualisys.as_quat()])
 
-    # Reihenfolge wird von rnl angewendet -> erst von imu zu cs, dann von cs zu marker
-    q_diff = R.from_quat(quat_marker_data[0]) * R_imu[0].inv()
-    euler = q_diff.as_euler('yxz', degrees=True)
-    q_heading_correction = R.from_euler('y', euler[0], degrees=True)
-    return q_heading_correction
-
-
-# def calculate_orientation_deviation(marker_data, marker_names, R_imu, pos, i=0):
-#    # i = 0
-#     if pos == 'toes_r':
-#         imu_marker_1 = extract_marker_coordinates(marker_data, marker_names[0], i)
-#         imu_marker_extra_2 = extract_marker_coordinates(marker_data, marker_names[1], i)
-#         imu_marker_3 = extract_marker_coordinates(marker_data, marker_names[2], i)
-#         imu_marker_21 = imu_marker_1 - imu_marker_extra_2
-#         imu_marker_2 = imu_marker_extra_2 + imu_marker_21 / 2
-#     else:
-#         imu_marker_1 = extract_marker_coordinates(marker_data, marker_names[0], i)
-#         imu_marker_2 = extract_marker_coordinates(marker_data, marker_names[1], i)
-#         imu_marker_3 = extract_marker_coordinates(marker_data, marker_names[2], i)
-#     if any(imu_marker_1 == 0.0) or any(imu_marker_2 == 0.0) or any(imu_marker_3 == 0.0):
-#         return 0.0, np.array([0, 0, 0, 0])
-#     marker_x_axis = imu_marker_1 - imu_marker_2
-#     marker_y_axis = imu_marker_3 - imu_marker_2
-#     marker_z_axis = np.cross(marker_x_axis, marker_y_axis)
-#     marker_x_axis = marker_x_axis / np.linalg.norm(marker_x_axis)
-#     marker_y_axis = marker_y_axis / np.linalg.norm(marker_y_axis)
-#     marker_z_axis = marker_z_axis / np.linalg.norm(marker_z_axis)
-#     imu_marker_cs = np.array([marker_x_axis, marker_y_axis, marker_z_axis]).T
-#     qualisys_cs = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]]).T
-#     R_imu_marker = R.from_matrix(np.matmul(np.linalg.inv(qualisys_cs), imu_marker_cs))
-#     quat_imu_marker = np.array([R_imu_marker.as_quat()])
-#
-#     # Reihenfolge wird von rnl angewendet -> erst von imu zu cs, dann von cs zu marker
-#     q_diff = R_imu_marker * R_imu.inv()
-#     return np.linalg.norm(q_diff.as_rotvec(degrees=True)), R_imu_marker.as_quat()
 
 def fix_marker_coordinate_zeros(marker_coordinates):
 
@@ -134,9 +78,11 @@ def calculate_orientation_deviation(marker_data, marker_names, R_imu, pos):
     if pos == 'toes_r':
         imu_marker_1 = extract_marker_coordinates(marker_data, marker_names[0])
         imu_marker_extra_2 = extract_marker_coordinates(marker_data, marker_names[1])
+        _, zero_ind = fix_marker_coordinate_zeros(imu_marker_extra_2)
         imu_marker_3 = extract_marker_coordinates(marker_data, marker_names[2])
         imu_marker_21 = imu_marker_1 - imu_marker_extra_2
         imu_marker_2 = imu_marker_extra_2 + imu_marker_21 / 2
+        imu_marker_2[zero_ind] = [0.0, 0.0, 0.0]
     else:
         imu_marker_1 = extract_marker_coordinates(marker_data, marker_names[0])
         imu_marker_2 = extract_marker_coordinates(marker_data, marker_names[1])
@@ -222,17 +168,6 @@ def perform_inverse_kinematics_w_imu_data(measurement_path, cfg, imu_sample_rate
 
         deviation_angles, marker_orientations, imu_orientations, error_indices = calculate_orientation_deviation(marker_data, infos['marker_names'], R_imu_correct_heading, pos)
 
-        # # 3. calculate deviation
-        # deviations_angles = []
-        # marker_orientations = []
-        # for i, imu_rot in enumerate(R_imu_correct_heading):
-        #     if i > marker_data.shape[0] -1:
-        #         continue
-        #     dev_angle, marker_or = calculate_orientation_deviation(marker_data, infos['marker_names'], imu_rot, pos, i=i)
-        #     deviations_angles.append(dev_angle)
-        #     marker_orientations.append(marker_or)
-
-
         registered_imu_data[pos] = {'deviations_angles': deviation_angles, 'marker_orientations': marker_orientations, 'imu_orientations': imu_orientations, 'error_indices': error_indices}
 
 
@@ -243,11 +178,12 @@ def perform_inverse_kinematics_w_imu_data(measurement_path, cfg, imu_sample_rate
 
 all_paths = hf.get_all_folder_paths('../data')
 all_paths = hf.filter_paths_by_subpaths(all_paths, [
-    'ce', f'{os.sep}ee'])
+    'gwo', f'{os.sep}ng', 'rd', 'rgs'])
 # all_paths = hf.filter_paths_by_subpaths(all_paths, [
-#     'jung-hee/ee'])
-# all_paths = sorted(hf.remove_paths_with_patterns(all_paths, ['ik_imus']))
+#     'elodie/ng'])
+
 all_paths = sorted(hf.remove_paths_with_patterns(all_paths, ['ik_imus']))
+# all_paths = sorted(hf.remove_paths_with_patterns(all_paths, ['ik_imus']))
 
 for p in tqdm(all_paths):
     subject_name = hfp.extract_subject_name_from_path(p)

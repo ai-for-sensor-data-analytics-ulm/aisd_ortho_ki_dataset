@@ -8,6 +8,8 @@ import json
 import os
 import yaml
 from tqdm import tqdm
+
+
 def load_config(config_path: Path) -> dict:
     """Load YAML configuration file."""
     with open(config_path, 'r') as f:
@@ -49,7 +51,7 @@ def run_batch_pipeline(root_path: Path, config_path: Path):
 
     subpath_filter = []
     match cfg['process_exercises']:
-        case 'all':
+        case ['all']:
             subpath_filter = ['gwo', f'{os.sep}ng', 'rd', 'rgs']
         case _:
             for subpath in cfg['process_exercises']:
@@ -63,7 +65,7 @@ def run_batch_pipeline(root_path: Path, config_path: Path):
     all_paths = hf.filter_paths_by_subpaths(all_paths, subpath_filter)
 
     match cfg['process_subjects']:
-        case 'all':
+        case ['all']:
             pass
         case _:
             all_paths = hf.filter_paths_by_subpaths(all_paths, cfg['process_subjects'])

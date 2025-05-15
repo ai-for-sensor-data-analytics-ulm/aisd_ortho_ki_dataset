@@ -135,6 +135,9 @@ def scale_model_with_markers(measurement_path: Path,
     path_scaling_settings = hf.copy_xml_to_directory(path_template_scaling_settings,
                                                      Path(ik_path / f'scaling_settings_{subject_name}_{exercise}.xml'))
 
+    # adjust no_ik_for
+
+
     modify_scaling_setup(
         xml_path=path_scaling_settings,
         path_baseline_model=path_template_model.resolve(),

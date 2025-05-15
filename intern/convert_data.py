@@ -6,6 +6,7 @@ import numpy as np
 from tqdm import tqdm
 import json
 import shutil
+import re
 
 
 def imu_to_csv(raw_data_path, processed_data_path, imu_samplerate):
@@ -72,7 +73,15 @@ def marker_to_csv(raw_data_path, processed_data_path):
             df_data.append(d)
     marker_df = pd.DataFrame(np.array(df_data).T, columns=col_names)
     marker_df.to_csv(processed_data_path, index=False)
-    return
+
+    rel_cols = []
+    for col in marker_df.columns[marker_df.iloc[0] == 0.0].tolist():
+        if col == 'time_[s]':
+            continue
+        else:
+            rel_cols.append(re.sub(r'_[XYZ]_?\[mm\]', '', col))
+
+    return list(set(rel_cols))
 
 
 def timestamps_to_csv(raw_data_path, processed_data_path, label_lookup):
@@ -168,14 +177,30 @@ LABEL_LOOKUP = {'ee_corr': 'rd_correct',
                 'gwo_v2': 'gwo_v2',}
 
 segment_to_marker_lookup = { 'toes_r': {'marker_names':['R_TOE1', 'R_TOE2', 'R_TOE3'],'imu_name': 'XSens_Hand_Right'},
-                                                        'calcn_l': {'marker_names': ['L_FOOT1', 'L_FOOT2', 'L_FOOT3'],'imu_name': 'XSens_Foot_Left'},
-                                                        'calcn_r': {'marker_names':['R_FOOT1',  'R_FOOT2', 'R_FOOT3'],'imu_name': 'XSens_Foot_Right'},
-                                                        'tibia_r':{'marker_names':['R_SHIN1', 'R_SHIN2', 'R_SHIN3'],'imu_name': 'XSens_LowerLeg_Right'} ,
-                                                        'tibia_l': {'marker_names':['L_SHIN1', 'L_SHIN2', 'L_SHIN3'],'imu_name': 'XSens_LowerLeg_Left'},
-                                                        'femur_r': {'marker_names':['R_THI1', 'R_THI2', 'R_THI3'],'imu_name': 'XSens_UpperLeg_Right'},
-                                                        'femur_l':{'marker_names':['L_THI1', 'L_THI2', 'L_THI3'],'imu_name': 'XSens_UpperLeg_Left'} ,
-                                                        'pelvis': {'marker_names':['PELV1', 'PELV2', 'PELV3'],'imu_name': 'XSens_Pelvis'},
-                                                        'torso': {'marker_names':['THOR1', 'THOR2', 'THOR3'],'imu_name': 'XSens_Sternum'}}
+                                                        'calcn_l': {'marker_names': ['L_FOOT1', 'L_FOOT2', 'L_FOOT3', 'L_FOOT4'],'imu_name': 'XSens_Foot_Left'},
+                                                        'calcn_r': {'marker_names':['R_FOOT1',  'R_FOOT2', 'R_FOOT3', 'R_FOOT4'],'imu_name': 'XSens_Foot_Right'},
+                                                        'tibia_r':{'marker_names':['R_SHIN1', 'R_SHIN2', 'R_SHIN3', 'R_SHIN4'],'imu_name': 'XSens_LowerLeg_Right'} ,
+                                                        'tibia_l': {'marker_names':['L_SHIN1', 'L_SHIN2', 'L_SHIN3', 'L_SHIN4'],'imu_name': 'XSens_LowerLeg_Left'},
+                                                        'femur_r': {'marker_names':['R_THI1', 'R_THI2', 'R_THI3', 'R_THI4'],'imu_name': 'XSens_UpperLeg_Right'},
+                                                        'femur_l':{'marker_names':['L_THI1', 'L_THI2', 'L_THI3', 'L_THI4'],'imu_name': 'XSens_UpperLeg_Left'} ,
+                                                        'pelvis': {'marker_names':['PELV1', 'PELV2', 'PELV3', 'PELV4'],'imu_name': 'XSens_Pelvis'},
+                                                        'torso': {'marker_names':['THOR1', 'THOR2', 'THOR3', 'THOR4'],'imu_name': 'XSens_Sternum'}}
+
+scaling_segment_to_marker_lookup = {'R_IAS': ['pelvis','femur_r', 'torso'],
+                                    'L_IAS': ['pelvis', 'femur_l', 'torso'],
+                                    'R_FLE': ['femur_r'],
+                                    'L_FLE': ['femur_l'],
+                                    'R_FAX': ['tibia_r'],
+                                    'R_FAL': ['tibia_r'],
+                                    'L_FAX': ['tibia_l'],
+                                    'L_FAL': ['tibia_l'],
+                                    'R_SAE': ['torso', 'humerus_r'],
+                                    'L_SAE': ['torso', 'humerus_l'],
+                                    'R_HLE': ['humerus_r', 'radius_r', 'ulna_r'],
+                                    'L_HLE': ['humerus_l', 'radius_l', 'ulna_l'],
+                                    'R_RSP': ['radius_r', 'ulna_r'],
+                                    'L_RSP': ['radius_l', 'ulna_l']}
+
 
 METADATAS = {
     'Latifah': {'rd': {'start_ts': 0, 'scaling': {'no_scaling_for': [], 'no_ik_for':[]}, 'inverse_kinematics': segment_to_marker_lookup},
@@ -195,7 +220,7 @@ METADATAS = {
                 'rgs': {'start_ts': 0,  'scaling': {'no_scaling_for': [], 'no_ik_for':[]}, 'inverse_kinematics': segment_to_marker_lookup},
                 'ng': {'start_ts': 0, 'scaling': {'no_scaling_for': [], 'no_ik_for': []},
                        'inverse_kinematics': segment_to_marker_lookup},
-                'gwo': {'start_ts': 0, 'scaling': {'no_scaling_for': [], 'no_ik_for': []},
+                'gwo': {'start_ts': 0, 'scaling': {'no_scaling_for': [], 'no_ik_for': ['R_FME']},
                         'inverse_kinematics': segment_to_marker_lookup}},
     'Darryl': {'rd': {'start_ts': 0, 'scaling': {'no_scaling_for': [], 'no_ik_for':[]}, 'inverse_kinematics': segment_to_marker_lookup},
                 'rgs': {'start_ts': 0,  'scaling': {'no_scaling_for': [], 'no_ik_for':[]}, 'inverse_kinematics': segment_to_marker_lookup},
@@ -270,14 +295,14 @@ METADATAS = {
                 'gwo': {'start_ts': 5, 'scaling': {'no_scaling_for': [], 'no_ik_for': []},
                         'inverse_kinematics': segment_to_marker_lookup}},
     'Hans': {'rd': {'start_ts': 0, 'scaling': {'no_scaling_for': [], 'no_ik_for':[]}, 'inverse_kinematics': { 'toes_r': {'marker_names':['R_TOE1', 'R_TOE2', 'R_TOE3'],'imu_name': 'XSens_Hand_Right'},
-                                                        'calcn_l': {'marker_names': ['L_FOOT1', 'L_FOOT2', 'L_FOOT3'],'imu_name': 'XSens_Foot_Left'},
-                                                        'calcn_r': {'marker_names':['R_FOOT1',  'R_FOOT2', 'R_FOOT3'],'imu_name': 'XSens_Foot_Right'},
-                                                        'tibia_r':{'marker_names':['R_SHIN1', 'R_SHIN2', 'R_SHIN3'],'imu_name': 'XSens_Prop1'} ,
-                                                        'tibia_l': {'marker_names':['L_SHIN1', 'L_SHIN2', 'L_SHIN3'],'imu_name': 'XSens_LowerLeg_Left'},
-                                                        'femur_r': {'marker_names':['R_THI1', 'R_THI2', 'R_THI3'],'imu_name': 'XSens_UpperLeg_Right'},
-                                                        'femur_l':{'marker_names':['L_THI1', 'L_THI2', 'L_THI3'],'imu_name': 'XSens_UpperLeg_Left'} ,
-                                                        'pelvis': {'marker_names':['PELV1', 'PELV2', 'PELV3'],'imu_name': 'XSens_Pelvis'},
-                                                        'torso': {'marker_names':['THOR1', 'THOR2', 'THOR3'],'imu_name': 'XSens_Sternum'}}}},
+                                                        'calcn_l': {'marker_names': ['L_FOOT1', 'L_FOOT2', 'L_FOOT3', 'L_FOOT4'],'imu_name': 'XSens_Foot_Left'},
+                                                        'calcn_r': {'marker_names':['R_FOOT1',  'R_FOOT2', 'R_FOOT3', 'R_FOOT4'],'imu_name': 'XSens_Foot_Right'},
+                                                        'tibia_r':{'marker_names':['R_SHIN1', 'R_SHIN2', 'R_SHIN3', 'R_SHIN4'],'imu_name': 'XSens_Prop1'} ,
+                                                        'tibia_l': {'marker_names':['L_SHIN1', 'L_SHIN2', 'L_SHIN3', 'L_SHIN4'],'imu_name': 'XSens_LowerLeg_Left'},
+                                                        'femur_r': {'marker_names':['R_THI1', 'R_THI2', 'R_THI3', 'R_THI4'],'imu_name': 'XSens_UpperLeg_Right'},
+                                                        'femur_l':{'marker_names':['L_THI1', 'L_THI2', 'L_THI3', 'L_THI4'],'imu_name': 'XSens_UpperLeg_Left'} ,
+                                                        'pelvis': {'marker_names':['PELV1', 'PELV2', 'PELV3', 'PELV4'],'imu_name': 'XSens_Pelvis'},
+                                                        'torso': {'marker_names':['THOR1', 'THOR2', 'THOR3', 'THOR4'],'imu_name': 'XSens_Sternum'}}}},
     'Ziri': {'rd': {'start_ts': 0, 'scaling': {'no_scaling_for': ['pelvis'], 'no_ik_for':['R_IPS', 'R_FME']}, 'inverse_kinematics': segment_to_marker_lookup},
                 'rgs': {'start_ts': 0,  'scaling': {'no_scaling_for': [], 'no_ik_for':[]}, 'inverse_kinematics': segment_to_marker_lookup},
                 'ng': {'start_ts': 0, 'scaling': {'no_scaling_for': [], 'no_ik_for': []},
@@ -302,7 +327,7 @@ METADATAS = {
 all_paths = hf.get_all_folder_paths('../raw_data')
 # all_paths = hf.filter_paths_by_subpaths(all_paths, ['Physio_Uebungen/Einfache_Uebung', 'Physio_Uebungen/Komplexe_Uebung'])
 all_paths = hf.filter_paths_by_subpaths(all_paths, ['Gehen/Mit_Orthese', 'Gehen/Ohne_Einschraenkung', 'Physio_Uebungen/Einfache_Uebung', 'Physio_Uebungen/Komplexe_Uebung'])
-
+# all_paths = hf.filter_paths_by_subpaths(all_paths, ['Laurel/Gehen/Mit_Orthese'])
 # all_paths = sorted(hf.remove_paths_with_patterns(all_paths, ['Zebris', 'XSens', 'QTM', 'models', 'IMU_IK_results', 'Latifah', 'Hamit', 'Laurel',
 #                                                              'Darryl', 'Austra', 'Jung-Hee', 'Rehema', 'Etsuko', 'Yaxkin', 'Elodie', 'Gregers', 'Rushda',
 #                                                              'Marquise', 'Julia', 'Katee', 'Neves']))
@@ -345,7 +370,12 @@ for p in tqdm(all_paths):
     else:
         raw_marker_path = marker_files[0]
     processed_marker_path = subject_save_path / f'{MARKER_DATA_FILE_NAME}_{subject_name.lower()}_{exercise}.csv'
-    marker_to_csv(raw_marker_path, processed_marker_path)
+    add_no_ik_for = marker_to_csv(raw_marker_path, processed_marker_path)
+    add_no_scaling_for = []
+    for marker in add_no_ik_for:
+        if marker in segment_to_marker_lookup.keys():
+            add_no_scaling_for += segment_to_marker_lookup[marker]['marker_names']
+    add_no_scaling_for = list(set(add_no_scaling_for))
 
     # generate timestamps csv
     if exercise == 'rd' or exercise == 'rgs':
@@ -370,6 +400,8 @@ for p in tqdm(all_paths):
 
     # generate metadata.json
     metadata = METADATAS[subject_name][exercise]
+    metadata['scaling']['no_ik_for'] = list(set(metadata['scaling']['no_ik_for'] + add_no_ik_for))
+    metadata['scaling']['no_scaling_for'] = list(set(metadata['scaling']['no_scaling_for'] + add_no_scaling_for))
     with open(subject_save_path / f'metadata_{subject_name.lower()}_{exercise}.json', 'w') as f:
         json.dump(metadata, f, indent=4)
 

@@ -96,10 +96,19 @@ def calculate_heading_correction(marker_data: pd.DataFrame, marker_names: list[s
         imu_marker_1 = extract_marker_coordinates(marker_data, marker_names[0], i)
         imu_marker_2 = extract_marker_coordinates(marker_data, marker_names[1], i)
         imu_marker_3 = extract_marker_coordinates(marker_data, marker_names[2], i)
+        imu_marker_4 = extract_marker_coordinates(marker_data, marker_names[3], i)
 
-    marker_x = imu_marker_1 - imu_marker_2
-    marker_y = imu_marker_3 - imu_marker_2
-    marker_z = np.cross(marker_x, marker_y)
+    if any(imu_marker_1 == 0.0):
+        # Handle case where marker 1 is not available
+        marker_x = imu_marker_4 - imu_marker_2
+        marker_y = imu_marker_3 - imu_marker_2
+        marker_z = np.cross(marker_x, marker_y)
+        # as marker_x and marker_y are not orthogonal, we need to recalculate marker_x
+        marker_x = np.cross(marker_y, marker_z)
+    else:
+        marker_x = imu_marker_1 - imu_marker_2
+        marker_y = imu_marker_3 - imu_marker_2
+        marker_z = np.cross(marker_x, marker_y)
 
     # Normalize axes
     marker_x /= np.linalg.norm(marker_x)
