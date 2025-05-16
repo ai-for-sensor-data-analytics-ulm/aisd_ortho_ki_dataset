@@ -122,7 +122,7 @@ def timestamps_treadmill_csv(processed_data_path, velocity_data, samplerate, exe
             segments = [(20059, 22638), (27055, 33000), (34001, 40474)]
             velocities = [3.54, 4.02, 4.46 ]
         elif 'yaxkin/ng/' in str(processed_data_path):
-            segments = [(7.67, 54.02), (56.04, 80.959), (82.44, 111.16)]
+            segments = [(767, 5402), (5604, 8095.9), (8244, 11116)]
             velocities = [2.57, 3.02, 3.96]
         elif 'yaxkin/gwo/' in str(processed_data_path):
             segments = segments[1:]
@@ -136,7 +136,7 @@ def timestamps_treadmill_csv(processed_data_path, velocity_data, samplerate, exe
         elif 'marquise/ng/' in str(processed_data_path):
             pass
         elif 'neves/ng/' in str(processed_data_path):
-            segments = [(32.37, 79.97), (91.24, 150.31), (160.53, 209.71)]
+            segments = [(3237, 7997), (9124, 15031), (16053, 20971)]
             velocities = [3.49, 4.03, 4.48]
         elif 'erna/gwo' in str(processed_data_path):
             segments = segments[1:]
