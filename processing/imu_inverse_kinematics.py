@@ -10,119 +10,6 @@ import logging
 osim.Logger.setLevel(osim.Logger.Level_Info)
 logger = logging.getLogger(__name__)
 
-# Constants
-IMU_QUAT_AXES = ['QX', 'QY', 'QZ', 'QW']
-IMU_TO_OPENSIM_ROTATION = R.from_euler(seq='x', angles=-90, degrees=True)
-
-
-def read_trc_file(filename: str) -> pd.DataFrame:
-    """
-    Reads a .trc (marker trajectory) file in OpenSim format and returns a DataFrame.
-
-    Parameters:
-        filename (str): Path to the .trc file.
-
-    Returns:
-        pd.DataFrame: Marker positions with columns ['Time', 'marker1_x', 'marker1_y', ..., 'markerN_z'].
-
-    Raises:
-        FileNotFoundError: If the file does not exist.
-        ValueError: If the data lines do not match expected column format.
-    """
-    if not os.path.exists(filename):
-        logger.error(f"TRC file not found: {filename}")
-        raise FileNotFoundError(f"File not found: {filename}")
-
-    with open(filename, 'r') as file_id:
-        all_lines = file_id.readlines()
-
-    marker_names = all_lines[3].strip().split('\t')
-    marker_names = [m for m in marker_names if m not in ('Frame#', 'Time', '\n', '')]
-
-    col_names = ['Time']
-    for m in marker_names:
-        col_names.extend([f'{m}_x', f'{m}_y', f'{m}_z'])
-
-    data = []
-    for line_idx in range(5, len(all_lines)):
-        d = all_lines[line_idx].strip().split('\t')[1:]
-        if len(d) != len(col_names):
-            logger.error(f"TRC line {line_idx + 1} column mismatch: {len(d)} vs {len(col_names)}")
-            raise ValueError(f'Line {line_idx + 1} has {len(d)} columns, expected {len(col_names)}')
-        data.append(d)
-
-    return pd.DataFrame(data=data, columns=col_names).astype('float', errors='ignore')
-
-
-def extract_marker_coordinates(marker_data: pd.DataFrame, marker_name: str, pos: int) -> np.ndarray:
-    """
-    Extracts the 3D coordinates of a specific marker at a given frame index.
-
-    Parameters:
-        marker_data (pd.DataFrame): Marker data as DataFrame.
-        marker_name (str): Name of the marker (without _x/_y/_z).
-        pos (int): Row index (frame number) to extract.
-
-    Returns:
-        np.ndarray: 3D coordinates [x, y, z] of the marker at the specified frame.
-    """
-    return marker_data[[f'{marker_name}_{axis}' for axis in ['x', 'y', 'z']]].iloc[pos].to_numpy()
-
-
-def calculate_heading_correction(marker_data: pd.DataFrame, marker_names: list[str], R_imu: R, pos: str) -> R:
-    """
-    Computes a heading correction rotation for an IMU based on marker geometry in a static pose.
-
-    The correction aligns the IMU heading with the segment's marker-defined orientation.
-
-    Parameters:
-        marker_data (pd.DataFrame): Marker positions for a static frame (e.g., first frame).
-        marker_names (list[str]): List of 3 marker names defining the local segment frame.
-        R_imu (Rotation): Rotation object (scipy.spatial.transform.Rotation) from IMU.
-        pos (str): Segment name, used to apply special rules (e.g., for 'toes_r').
-
-    Returns:
-        Rotation: A scipy Rotation object representing the heading correction (rotation around Y-axis).
-    """
-    i = 0
-
-    if pos == 'toes_r':
-        imu_marker_1 = extract_marker_coordinates(marker_data, marker_names[0], i)
-        imu_marker_extra_2 = extract_marker_coordinates(marker_data, marker_names[1], i)
-        imu_marker_3 = extract_marker_coordinates(marker_data, marker_names[2], i)
-        imu_marker_21 = imu_marker_1 - imu_marker_extra_2
-        imu_marker_2 = imu_marker_extra_2 + imu_marker_21 / 2
-    else:
-        imu_marker_1 = extract_marker_coordinates(marker_data, marker_names[0], i)
-        imu_marker_2 = extract_marker_coordinates(marker_data, marker_names[1], i)
-        imu_marker_3 = extract_marker_coordinates(marker_data, marker_names[2], i)
-        imu_marker_4 = extract_marker_coordinates(marker_data, marker_names[3], i)
-
-    if any(imu_marker_1 == 0.0):
-        # Handle case where marker 1 is not available
-        marker_x = imu_marker_4 - imu_marker_2
-        marker_y = imu_marker_3 - imu_marker_2
-        marker_z = np.cross(marker_x, marker_y)
-        # as marker_x and marker_y are not orthogonal, we need to recalculate marker_x
-        marker_x = np.cross(marker_y, marker_z)
-    else:
-        marker_x = imu_marker_1 - imu_marker_2
-        marker_y = imu_marker_3 - imu_marker_2
-        marker_z = np.cross(marker_x, marker_y)
-
-    # Normalize axes
-    marker_x /= np.linalg.norm(marker_x)
-    marker_y /= np.linalg.norm(marker_y)
-    marker_z /= np.linalg.norm(marker_z)
-
-    imu_cs = np.column_stack([marker_x, marker_y, marker_z])
-    qualisys_cs = np.eye(3)
-    R_marker = R.from_matrix(np.linalg.inv(qualisys_cs) @ imu_cs)
-
-    q_diff = R_marker * R_imu[0].inv()
-    euler = q_diff.as_euler('yxz', degrees=True)
-    return R.from_euler('y', euler[0], degrees=True)
-
 
 def extract_segment_orientations(model_path: str) -> dict[str, R]:
     """
@@ -150,6 +37,7 @@ def extract_segment_orientations(model_path: str) -> dict[str, R]:
     return segment_orientations
 
 
+
 def load_marker_data(ik_dir: Path, subject_name: str, exercise: str, start_ts: float) -> pd.DataFrame:
     """
     Loads and filters marker data from a .trc file for a specific subject and exercise.
@@ -164,7 +52,7 @@ def load_marker_data(ik_dir: Path, subject_name: str, exercise: str, start_ts: f
         pd.DataFrame: Marker data as a DataFrame, filtered to include only data from `start_ts` onward.
     """
     marker_path = ik_dir / f'marker_data_osim_format_{subject_name}_{exercise}.trc'
-    marker_data = read_trc_file(str(marker_path))
+    marker_data = hf.read_trc_file(str(marker_path))
     return marker_data[marker_data['Time'] >= start_ts]
 
 
@@ -209,10 +97,10 @@ def compute_registered_imu_orientations(cfg, marker_data, imu_data, segment_orie
 
     registered_imu_data = {}
     for pos, infos in cfg['inverse_kinematics'].items():
-        quat_cols = [f'{infos["imu_name"]}_{axis}' for axis in IMU_QUAT_AXES]
+        quat_cols = [f'{infos["imu_name"]}_{axis}' for axis in hf.IMU_QUAT_AXES]
         R_imu = R.from_quat(imu_data[quat_cols].to_numpy())
-        R_imu = IMU_TO_OPENSIM_ROTATION * R_imu
-        q_heading_correction = calculate_heading_correction(marker_data, infos['marker_names'], R_imu, pos)
+        R_imu = hf.IMU_TO_OPENSIM_ROTATION * R_imu
+        q_heading_correction = hf.calculate_heading_correction(marker_data, infos['marker_names'], R_imu, pos)
         R_corrected = q_heading_correction * R_imu
         calibration = segment_orientations[pos].inv() * R_corrected[0]
         logger.info(f'Segment correction for {pos}:\n{calibration.as_matrix()}')
@@ -239,7 +127,7 @@ def build_imu_dataframe(registered_imu_data: dict, cfg, time: np.ndarray) -> pd.
 
     for pos, quat in registered_imu_data.items():
         imu_name = cfg["inverse_kinematics"][pos]["imu_name"]
-        col_names += [f"{imu_name}_{axis}" for axis in IMU_QUAT_AXES]
+        col_names += [f"{imu_name}_{axis}" for axis in hf.IMU_QUAT_AXES]
         df_data += [list(quat[:, i]) for i in range(4)]
 
     imu_df = pd.DataFrame(np.array(df_data).T, columns=col_names)

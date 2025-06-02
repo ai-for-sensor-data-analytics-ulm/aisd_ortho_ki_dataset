@@ -11,7 +11,7 @@ import json
 import yaml
 from tqdm import tqdm
 import processing.helper_fcts as hfp
-from processing.imu_inverse_kinematics import calculate_heading_correction
+
 
 def read_trc_file(filename):
 
@@ -96,10 +96,13 @@ def calculate_orientation_deviation(marker_data, marker_names, R_imu, pos):
         error_indices += error_ind
     marker_x_axis = imu_marker_1 - imu_marker_2
     marker_y_axis = imu_marker_3 - imu_marker_2
+    len_x_axis = np.linalg.norm(marker_x_axis, axis=1)
+    len_y_axis = np.linalg.norm(marker_y_axis, axis=1)
     marker_z_axis = np.cross(marker_x_axis, marker_y_axis)
     marker_x_axis = marker_x_axis / np.linalg.norm(marker_x_axis, axis=1).reshape(-1,1)
     marker_y_axis = marker_y_axis / np.linalg.norm(marker_y_axis, axis=1).reshape(-1,1)
     marker_z_axis = marker_z_axis / np.linalg.norm(marker_z_axis, axis=1).reshape(-1,1)
+    orthogonality = np.vecdot(marker_x_axis, marker_y_axis, axis=1)
     # imu_marker_cs = np.array([marker_x_axis, marker_y_axis, marker_z_axis]).T
     imu_marker_cs = np.zeros((marker_x_axis.shape[0], 3,3))
     for i in range(marker_x_axis.shape[0]):
@@ -111,12 +114,16 @@ def calculate_orientation_deviation(marker_data, marker_names, R_imu, pos):
     R_imu_marker = R.from_matrix(np.matmul(qualisys_cs, imu_marker_cs))
 
     # check if Orientation length is the same
+    lens = {'R_imu_marker': len(R_imu_marker), 'R_imu': len(R_imu)}
     min_length = min(len(R_imu_marker), len(R_imu))
     R_imu_marker = R_imu_marker[:min_length]
     R_imu = R_imu[:min_length]
+    orthogonality = orthogonality[:min_length]
+    len_x_axis = len_x_axis[:min_length]
+    len_y_axis = len_y_axis[:min_length]
     # Reihenfolge wird von rnl angewendet -> erst von imu zu cs, dann von cs zu marker
     q_diff = R_imu_marker * R_imu.inv()
-    return np.linalg.norm(q_diff.as_rotvec(degrees=True), axis=1), R_imu_marker.as_quat(), R_imu.as_quat(), error_indices
+    return np.linalg.norm(q_diff.as_rotvec(degrees=True), axis=1), R_imu_marker.as_quat(), R_imu.as_quat(), error_indices, orthogonality, len_x_axis, len_y_axis, lens
 
 def extract_segment_orientations(model_path):
     model = osim.Model(model_path)
@@ -166,9 +173,11 @@ def perform_inverse_kinematics_w_imu_data(measurement_path, cfg, imu_sample_rate
         # 2. IMU Transformation: apply heading correction
         R_imu_correct_heading = q_heading_correction * R_imu
 
-        deviation_angles, marker_orientations, imu_orientations, error_indices = calculate_orientation_deviation(marker_data, infos['marker_names'], R_imu_correct_heading, pos)
+        deviation_angles, marker_orientations, imu_orientations, error_indices, orthogonality, len_x_axis, len_y_axis, lens = calculate_orientation_deviation(marker_data, infos['marker_names'], R_imu_correct_heading, pos)
 
-        registered_imu_data[pos] = {'deviations_angles': deviation_angles, 'marker_orientations': marker_orientations, 'imu_orientations': imu_orientations, 'error_indices': error_indices}
+        registered_imu_data[pos] = {'deviations_angles': deviation_angles, 'marker_orientations': marker_orientations,
+                                    'imu_orientations': imu_orientations, 'error_indices': error_indices,
+                                    'orthogonality': orthogonality, 'len_x_axis': len_x_axis, 'len_y_axis': len_y_axis, 'original_lengths': lens}
 
 
     pkl.dump(registered_imu_data, open(measurement_path / 'imu_marker_deviations_second_version.pkl', 'wb'))

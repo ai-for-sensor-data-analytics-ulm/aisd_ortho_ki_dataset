@@ -7,31 +7,13 @@ from tqdm import tqdm
 import json
 import shutil
 import re
+import pickle as pkl
 
 
 def imu_to_csv(raw_data_path, processed_data_path, imu_samplerate):
     raw_imu_data = np.load(raw_data_path, allow_pickle=True).item()
-    col_names = []
-    df_data = []
-    lengths = set([len(data['QW']) for data in raw_imu_data.values()])
-    if max(lengths) - min(lengths) > 4:
-        if 'austra/ng/' not in str(processed_data_path):
-            raise ValueError(f'IMU data lengths are not equal for IMUs in {raw_data_path}.')
-    min_com_length = min(lengths)
-    for imu_pos in raw_imu_data.keys():
-        for axis, d in raw_imu_data[imu_pos].items():
-            if axis in ['QW', 'QX', 'QY', 'QZ']:
-                col_names.append(f'{imu_pos}_{axis}')
-                if len(d) > min_com_length:
-                    d = d[:min_com_length]
-                df_data.append(list(d))
-    imu_df = pd.DataFrame(np.array(df_data).T, columns=col_names)
-    imu_df = imu_df.iloc[XSENS_OPENSIM_TIME_OFFSET:, :]
-    imu_df.index = imu_df.index - XSENS_OPENSIM_TIME_OFFSET
-    imu_df['time [s]'] = imu_df.index / imu_samplerate
-    imu_df = imu_df[['time [s]'] + col_names]
-    imu_df.to_csv(processed_data_path, index=False)
-    return
+    lengths = {imu_name: len(data['QW']) for imu_name, data in raw_imu_data.items()}
+    return lengths
 
 def find_constant_speed_segments(speeds, timestamps, min_duration=2000, tolerance=0.05):
     start_idx = 0
@@ -57,33 +39,8 @@ def find_constant_speed_segments(speeds, timestamps, min_duration=2000, toleranc
 
 def marker_to_csv(raw_data_path, processed_data_path):
     raw_marker_data = np.load(raw_data_path, allow_pickle=True).item()
-    col_names = []
-    df_data = []
-    lengths = set([len(data) for data in raw_marker_data['Marker'].values()] + [len(raw_marker_data['Time'])])
-    if max(lengths) - min(lengths) > 4:
-        raise ValueError(f'Marker data lengths are not equal for Markers in {raw_data_path}.')
-    min_com_length = min(lengths)
-    col_names.append('time_[s]')
-    df_data.append(raw_marker_data['Time'][:min_com_length])
-    for marker_name, marker_data in raw_marker_data['Marker'].items():
-        marker_data = np.array(marker_data)
-        for i, axis_name in enumerate(['X', 'Y', 'Z']):
-            col_names.append(f'{marker_name}_{axis_name}_[mm]')
-            d = list(marker_data[:, i])
-            if len(d) > min_com_length:
-                d = d[:min_com_length]
-            df_data.append(d)
-    marker_df = pd.DataFrame(np.array(df_data).T, columns=col_names)
-    marker_df.to_csv(processed_data_path, index=False)
-
-    rel_cols = []
-    for col in marker_df.columns[marker_df.iloc[0] == 0.0].tolist():
-        if col == 'time_[s]':
-            continue
-        else:
-            rel_cols.append(re.sub(r'_[XYZ]_?\[mm\]', '', col))
-
-    return list(set(rel_cols))
+    lengths = {marker_name:len(data) for marker_name, data in raw_marker_data['Marker'].items()}
+    return lengths
 
 
 def timestamps_to_csv(raw_data_path, processed_data_path, label_lookup):
@@ -162,8 +119,6 @@ def timestamps_treadmill_csv(processed_data_path, velocity_data, samplerate, exe
 IMU_SAMPLERATE = 100
 IMU_DATA_FILE_NAME = 'xsens_imu_data'
 MARKER_DATA_FILE_NAME = 'qualisys_marker_data'
-# time offset between xsens and qualisys in timestamps, likely due to sync delay. Only positive values are allowed and represent the number of samples which are cut from the xsens data.
-XSENS_OPENSIM_TIME_OFFSET = 3
 
 LABEL_LOOKUP = {'ee_corr': 'rd_correct',
                 'ee_toe': 'rd_toes',
@@ -331,7 +286,7 @@ METADATAS = {
 all_paths = hf.get_all_folder_paths('../raw_data')
 # all_paths = hf.filter_paths_by_subpaths(all_paths, ['Physio_Uebungen/Einfache_Uebung', 'Physio_Uebungen/Komplexe_Uebung'])
 all_paths = hf.filter_paths_by_subpaths(all_paths, ['Gehen/Mit_Orthese', 'Gehen/Ohne_Einschraenkung', 'Physio_Uebungen/Einfache_Uebung', 'Physio_Uebungen/Komplexe_Uebung'])
-# all_paths = hf.filter_paths_by_subpaths(all_paths, ['Hans/Physio_Uebungen/Einfache_Uebung'])
+# all_paths = hf.filter_paths_by_subpaths(all_paths, ['Laurel/Gehen/Mit_Orthese'])
 # all_paths = sorted(hf.remove_paths_with_patterns(all_paths, ['Zebris', 'XSens', 'QTM', 'models', 'IMU_IK_results', 'Latifah', 'Hamit', 'Laurel',
 #                                                              'Darryl', 'Austra', 'Jung-Hee', 'Rehema', 'Etsuko', 'Yaxkin', 'Elodie', 'Gregers', 'Rushda',
 #                                                              'Marquise', 'Julia', 'Katee', 'Neves']))
@@ -342,7 +297,7 @@ all_paths = sorted(hf.remove_paths_with_patterns(all_paths, ['Zebris', 'XSens', 
 # all_paths = sorted(hf.remove_paths_with_patterns(all_paths, ['Zebris', 'XSens', 'QTM', 'models', 'IMU_IK_results', 'Latifah', 'Austra', 'Darryl', 'Etsuko', 'Hamit', 'Jung-Hee', 'Laurel', 'Rehema', 'Yaxkin']))
 
 save_path = Path('../data')
-
+length_data = {}
 for p in tqdm(all_paths):
     if 'Einfache_Uebung' in str(p):
         exercise = 'rd'
@@ -357,13 +312,13 @@ for p in tqdm(all_paths):
     p = Path(p)
     subject_save_path = save_path / subject_name.lower() / exercise
 
-    # create folder structure
-    os.makedirs(subject_save_path / 'ik_imus', exist_ok=True)
+    # # create folder structure
+    # os.makedirs(subject_save_path / 'ik_imus', exist_ok=True)
 
     # generate imu csv
     raw_imu_path = p / 'XSens' / 'xsens_data.npy'
     processed_imu_path = subject_save_path / f'{IMU_DATA_FILE_NAME}_{subject_name.lower()}_{exercise}.csv'
-    imu_to_csv(raw_imu_path, processed_imu_path, IMU_SAMPLERATE)
+    imu_lengths = imu_to_csv(raw_imu_path, processed_imu_path, IMU_SAMPLERATE)
 
     # generate marker csv
     marker_files = list((p/'QTM').glob("*Dynamic OKI*.npy"))
@@ -374,48 +329,51 @@ for p in tqdm(all_paths):
     else:
         raw_marker_path = marker_files[0]
     processed_marker_path = subject_save_path / f'{MARKER_DATA_FILE_NAME}_{subject_name.lower()}_{exercise}.csv'
-    add_no_ik_for = marker_to_csv(raw_marker_path, processed_marker_path)
-    add_no_scaling_for = []
-    for marker in add_no_ik_for:
-        if marker in segment_to_marker_lookup.keys():
-            add_no_scaling_for += segment_to_marker_lookup[marker]['marker_names']
-    add_no_scaling_for = list(set(add_no_scaling_for))
+    marker_lengths = marker_to_csv(raw_marker_path, processed_marker_path)
 
-    # generate timestamps csv
-    if exercise == 'rd' or exercise == 'rgs':
-        timestamp_files = list(p.glob("*timestamp*.csv"))
-        if not timestamp_files:
-            raise FileExistsError(f"Keine Timestamp-CSV-Datei in {p} gefunden.")
-        elif len(timestamp_files) > 1:
-            raise ValueError(f"Mehrere Timestamp-CSV-Dateien in {p} gefunden: {timestamp_files}.")
-        else:
-            timestamp_file_path = timestamp_files[0]
-        raw_timestamp_path = timestamp_file_path
-        processed_timestamp_path = subject_save_path / f'timestamps_{subject_name.lower()}_{exercise}.csv'
-        timestamps_to_csv(raw_timestamp_path, processed_timestamp_path, LABEL_LOOKUP)
-    elif exercise in ['ng', 'gwo']:
-        velocity_data = np.load(p / 'Zebris' / 'zebris_velocity_profile.npy', allow_pickle=True)
-        velocity_data = velocity_data[:, 0] + (velocity_data[:, 1] / (10 ** np.ceil(np.log10(velocity_data[:, 1] + 1))))
-        timestamps_treadmill_csv(processed_data_path=subject_save_path / f'timestamps_{subject_name.lower()}_{exercise}.csv',
-                                 velocity_data=velocity_data, samplerate=IMU_SAMPLERATE, exercise=exercise)
+    length_data[f'{subject_name}_{exercise}'] = {'imu': imu_lengths, 'marker': marker_lengths}
+    # add_no_scaling_for = []
+    # for marker in add_no_ik_for:
+    #     if marker in segment_to_marker_lookup.keys():
+    #         add_no_scaling_for += segment_to_marker_lookup[marker]['marker_names']
+    # add_no_scaling_for = list(set(add_no_scaling_for))
+    #
+    # # generate timestamps csv
+    # if exercise == 'rd' or exercise == 'rgs':
+    #     timestamp_files = list(p.glob("*timestamp*.csv"))
+    #     if not timestamp_files:
+    #         raise FileExistsError(f"Keine Timestamp-CSV-Datei in {p} gefunden.")
+    #     elif len(timestamp_files) > 1:
+    #         raise ValueError(f"Mehrere Timestamp-CSV-Dateien in {p} gefunden: {timestamp_files}.")
+    #     else:
+    #         timestamp_file_path = timestamp_files[0]
+    #     raw_timestamp_path = timestamp_file_path
+    #     processed_timestamp_path = subject_save_path / f'timestamps_{subject_name.lower()}_{exercise}.csv'
+    #     timestamps_to_csv(raw_timestamp_path, processed_timestamp_path, LABEL_LOOKUP)
+    # elif exercise in ['ng', 'gwo']:
+    #     velocity_data = np.load(p / 'Zebris' / 'zebris_velocity_profile.npy', allow_pickle=True)
+    #     velocity_data = velocity_data[:, 0] + (velocity_data[:, 1] / (10 ** np.ceil(np.log10(velocity_data[:, 1] + 1))))
+    #     timestamps_treadmill_csv(processed_data_path=subject_save_path / f'timestamps_{subject_name.lower()}_{exercise}.csv',
+    #                              velocity_data=velocity_data, samplerate=IMU_SAMPLERATE, exercise=exercise)
+    #
+    # else:
+    #     raise ValueError('Unrecognized Exercise')
+    #
+    # # generate metadata.json
+    # metadata = METADATAS[subject_name][exercise]
+    # metadata['scaling']['no_ik_for'] = list(set(metadata['scaling']['no_ik_for'] + add_no_ik_for))
+    # metadata['scaling']['no_scaling_for'] = list(set(metadata['scaling']['no_scaling_for'] + add_no_scaling_for))
+    # with open(subject_save_path / f'metadata_{subject_name.lower()}_{exercise}.json', 'w') as f:
+    #     json.dump(metadata, f, indent=4)
+    #
+    # # cp .trc marker file
+    # trc_files = list((p / 'QTM').glob("*opensim_data_Dynamic*.trc"))
+    # if not trc_files:
+    #     raise FileExistsError(f"Keine trc_files-Datei in {p} gefunden.")
+    # elif len(trc_files) > 1:
+    #     raise ValueError(f"Mehrere trc_files-Dateien in {p} gefunden: {timestamp_files}.")
+    # else:
+    #     trc_file_path = trc_files[0]
+    # shutil.copy2(trc_file_path, subject_save_path / 'ik_imus' / f'marker_data_osim_format_{subject_name.lower()}_{exercise}.trc')
 
-    else:
-        raise ValueError('Unrecognized Exercise')
-
-    # generate metadata.json
-    metadata = METADATAS[subject_name][exercise]
-    metadata['scaling']['no_ik_for'] = list(set(metadata['scaling']['no_ik_for'] + add_no_ik_for))
-    metadata['scaling']['no_scaling_for'] = list(set(metadata['scaling']['no_scaling_for'] + add_no_scaling_for))
-    with open(subject_save_path / f'metadata_{subject_name.lower()}_{exercise}.json', 'w') as f:
-        json.dump(metadata, f, indent=4)
-
-    # cp .trc marker file
-    trc_files = list((p / 'QTM').glob("*opensim_data_Dynamic*.trc"))
-    if not trc_files:
-        raise FileExistsError(f"Keine trc_files-Datei in {p} gefunden.")
-    elif len(trc_files) > 1:
-        raise ValueError(f"Mehrere trc_files-Dateien in {p} gefunden: {timestamp_files}.")
-    else:
-        trc_file_path = trc_files[0]
-    shutil.copy2(trc_file_path, subject_save_path / 'ik_imus' / f'marker_data_osim_format_{subject_name.lower()}_{exercise}.trc')
-
+pkl.dump(length_data, open('length_data.pkl', 'wb'))
