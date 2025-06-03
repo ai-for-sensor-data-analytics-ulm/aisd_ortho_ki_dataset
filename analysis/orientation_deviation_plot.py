@@ -1,5 +1,7 @@
+from typing import Optional, Union, Tuple, List, Dict, Any
 import json
 from pathlib import Path
+import argparse
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,15 +12,38 @@ import processing.helper_fcts as hfp
 import matplotlib
 matplotlib.use('Agg')
 
+SAMPLERATE = 100.0
 
-def extract_marker_coordinates(marker_data, marker_name, pos=None):
+
+def extract_marker_coordinates(marker_data: pd.DataFrame, marker_name: str, pos: Optional[int] = None) -> np.ndarray:
+    """
+    Extracts the x, y, z coordinates for a specific marker from the dataframe.
+
+    Parameters:
+        marker_data (pd.DataFrame): DataFrame containing marker trajectories.
+        marker_name (str): The base name of the marker (e.g., "ASIS").
+        pos (int, optional): Specific frame to extract, if None returns full array.
+
+    Returns:
+        np.ndarray: Array of shape (N, 3) or (3,) containing marker coordinates.
+    """
+    axes = ['x', 'y', 'z']
     if pos is None:
-        return marker_data[[f'{marker_name}_{axis}' for axis in ['x', 'y', 'z']]].to_numpy()
+        return marker_data[[f'{marker_name}_{axis}' for axis in axes]].to_numpy()
     else:
-        return marker_data[[f'{marker_name}_{axis}' for axis in ['x', 'y', 'z']]].iloc[pos].to_numpy()
+        return marker_data[[f'{marker_name}_{axis}' for axis in axes]].iloc[pos].to_numpy()
 
 
-def fix_marker_coordinate_zeros(marker_coordinates):
+def fix_marker_coordinate_zeros(marker_coordinates: np.ndarray) -> Tuple[np.ndarray, List[int]]:
+    """
+    Replaces zero-valued rows in marker coordinate array with the previous valid row.
+
+    Parameters:
+        marker_coordinates (np.ndarray): Array of shape (N, 3) with marker coordinates.
+
+    Returns:
+        Tuple[np.ndarray, List[int]]: Corrected array and list of indices that were replaced.
+    """
     indices = np.argwhere(marker_coordinates == 0.0)
     if len(indices) == 0:
         return marker_coordinates, []
@@ -29,7 +54,29 @@ def fix_marker_coordinate_zeros(marker_coordinates):
         return marker_coordinates, zero_ind
 
 
-def calculate_orientation_deviation(marker_data, marker_names, R_imu, pos):
+def calculate_orientation_deviation(
+    marker_data: pd.DataFrame,
+    marker_names: List[str],
+    R_imu: R,
+    pos: str
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, List[int]]:
+    """
+    Computes the rotational deviation between marker-based coordinate systems and IMU orientations.
+
+    Parameters:
+        marker_data (pd.DataFrame): Marker data in OpenSim format.
+        marker_names (List[str]): List of three marker names used to form the local coordinate system.
+        R_imu (R): Rotation object of IMU orientations (in OpenSim frame).
+        pos (str): Body segment name, special handling for 'toes_r'.
+
+    Returns:
+        Tuple[
+            np.ndarray,  # Angle deviation in degrees (N,)
+            np.ndarray,  # Marker orientations as quaternions (N, 4)
+            np.ndarray,  # IMU orientations as quaternions (N, 4)
+            List[int]    # Indices of samples where 0 values were corrected
+        ]
+    """
     error_indices = []
 
     if pos == 'toes_r':
@@ -81,7 +128,25 @@ def calculate_orientation_deviation(marker_data, marker_names, R_imu, pos):
                           axis=1), R_imu_marker.as_quat(), R_imu.as_quat(), error_indices
 
 
-def calculate_all_deviations(measurement_path, cfg, subject_name, exercise):
+def calculate_all_deviations(
+    measurement_path: Path,
+    cfg: Dict[str, Any],
+    subject_name: str,
+    exercise: str
+) -> Dict[str, Dict[str, Union[np.ndarray, List[int]]]]:
+    """
+    Computes the orientation deviations for all body segments defined in config.
+
+    Parameters:
+        measurement_path (Path): Base directory of the measurement.
+        cfg (Dict[str, Any]): Configuration dictionary with metadata and IMU-to-marker mapping.
+        subject_name (str): Subject identifier.
+        exercise (str): Name of the performed exercise.
+
+    Returns:
+        Dict[str, Dict]: Dictionary containing deviation angles, marker and IMU orientations,
+                         and error indices for each body segment.
+    """
 
     start_ts = cfg['start_ts']
     ik_dir = measurement_path / 'ik_imus'
@@ -115,7 +180,23 @@ def calculate_all_deviations(measurement_path, cfg, subject_name, exercise):
     return deviation_data
 
 
-def plot_sample(data, subject_name, exercise_name, start_ind=0, end_ind=-1):
+def plot_sample(
+    data: Dict[str, Dict[str, Union[np.ndarray, List[int]]]],
+    subject_name: str,
+    exercise_name: str,
+    start_ind: int = 0,
+    end_ind: int = -1
+) -> None:
+    """
+    Plots the deviation angles over time for each body segment and saves as PDF.
+
+    Parameters:
+        data (Dict): Output of `calculate_all_deviations`.
+        subject_name (str): Subject ID.
+        exercise_name (str): Exercise ID.
+        start_ind (int): Index of first sample to plot.
+        end_ind (int): Index of last sample to plot.
+    """
     fig, axs = plt.subplots(3, 3, figsize=(15, 10), sharey=True, constrained_layout=True)
     axs = axs.flatten()
     for i, (pos, d) in enumerate(data.items()):
@@ -135,20 +216,43 @@ def plot_sample(data, subject_name, exercise_name, start_ind=0, end_ind=-1):
     plt.savefig(f'subject_{subject_name}_exercise_{exercise_name}_deviations.png', format='pdf')
     plt.close()
 
-subject = 'darryl'
-exercise = 'ng'
-SAMPLERATE = 100.0
-base_path = Path(f'../data/{subject}/{exercise}')
 
-with open(base_path / f'metadata_{subject}_{exercise}.json', 'r') as stream:
-    processing_config = json.load(stream)
+def main():
+    """
+    Main routine to process IMU and marker data for a given subject and exercise.
+    Steps:
+    1. Load metadata and measurement files
+    2. Compute orientation deviations between IMU and marker-based reference frames
+    3. Plot and save the results
+    """
 
-deviation_data = calculate_all_deviations(
-    measurement_path=base_path,
-    cfg=processing_config,
-    subject_name=subject,
-    exercise=exercise
-)
+    parser = argparse.ArgumentParser(
+        description="Calculate and plot orientation deviations for a given subject and exercise.")
+    parser.add_argument("--subject", type=str, required=True, help="Subject identifier (e.g., darryl)")
+    parser.add_argument("--exercise", type=str, required=True, help="Exercise name (e.g., ng)")
+    parser.add_argument("--base_path", type=str, default="../data",
+                        help="Base directory where subject folders are stored")
 
-plot_sample(deviation_data, subject, exercise)
+    args = parser.parse_args()
 
+    subject = args.subject
+    exercise = args.exercise
+    base_path = Path(args.base_path)
+    measurement_path = base_path / subject / exercise
+    metadata_path = measurement_path / f'metadata_{subject}_{exercise}.json'
+
+
+    with open(metadata_path, 'r') as stream:
+        processing_config = json.load(stream)
+
+    deviation_data = calculate_all_deviations(
+        measurement_path=base_path,
+        cfg=processing_config,
+        subject_name=subject,
+        exercise=exercise
+    )
+
+    plot_sample(deviation_data, subject, exercise)
+
+if __name__ == "__main__":
+    main()

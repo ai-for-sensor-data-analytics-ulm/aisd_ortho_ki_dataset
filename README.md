@@ -166,19 +166,24 @@ The script performs the following steps:
 
 ---
 
-### 🧾 Example Usage
+### 🧾 CLI Usage
 
-You can run the script by modifying the following section at the bottom of the file:
-
-```python
-subject = 'darryl'
-exercise = 'ng'
-base_path = Path(f'../data/{subject}/{exercise}')
-```
-And then execute it with:
+You can run the script for a specific subject and task directly from the command line:
 ```bash
-python analysis/orientation_deviation_plot.py
+python analysis/orientation_deviation_plot.py \
+    --subject erna \
+    --exercise rd \
+    --base_path ../data
 ```
+### CLI Arguments
+
+| Key         | Description                      |
+|-------------|----------------------------------|
+| `subject`   | subject identifier (e.g. erna)   |
+| `exercise`  | exercise identifier (e.g. rd)    |
+| `base_path` | relative path to the stored data |
+
+
 
 ## Citation
 If you use this dataset or the accompanying code, please cite:
