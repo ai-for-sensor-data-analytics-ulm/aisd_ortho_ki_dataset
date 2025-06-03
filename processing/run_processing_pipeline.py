@@ -38,9 +38,9 @@ def process_subject(measurement_dir: Path, cfg: dict):
                                               subject_name=subject_name,
                                               exercise=exercise)
 
-        logging.info(f"✅ {subject_name}/{exercise} processed")
+        logging.info(f"{subject_name}/{exercise} processed")
     except Exception as e:
-        logging.error(f"❌ Error processing {subject_name}/{exercise}: {e}")
+        logging.error(f"Error processing {subject_name}/{exercise}: {e}")
 
 
 def run_batch_pipeline(root_path: Path, config_path: Path):
@@ -76,7 +76,7 @@ def run_batch_pipeline(root_path: Path, config_path: Path):
         measurement_dir = Path(measurement_dir)
         if not measurement_dir.is_dir():
             continue
-        logging.info(f"➡️ Processing {measurement_dir} ...")
+        logging.info(f"Processing {measurement_dir} ...")
         process_subject(measurement_dir, cfg)
 
 

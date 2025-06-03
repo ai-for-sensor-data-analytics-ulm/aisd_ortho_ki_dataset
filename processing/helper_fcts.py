@@ -5,7 +5,10 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 from scipy.spatial.transform import Rotation as R
+import logging
 
+
+logger = logging.getLogger(__name__)
 
 IMU_QUAT_AXES = ['QX', 'QY', 'QZ', 'QW']
 IMU_TO_OPENSIM_ROTATION = R.from_euler(seq='x', angles=-90, degrees=True)

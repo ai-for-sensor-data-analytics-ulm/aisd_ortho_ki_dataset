@@ -18,6 +18,11 @@ def imu_to_csv(raw_data_path, processed_data_path, imu_samplerate):
         if 'austra/ng/' not in str(processed_data_path):
             raise ValueError(f'IMU data lengths are not equal for IMUs in {raw_data_path}.')
     min_com_length = min(lengths)
+
+    # special case, as the qualisys measurement for gregers is shorter than the xsens measurement
+   # if 'gregers/ng' in str(processed_data_path):
+    #    min_com_length = 21803
+
     for imu_pos in raw_imu_data.keys():
         for axis, d in raw_imu_data[imu_pos].items():
             if axis in ['QW', 'QX', 'QY', 'QZ']:
@@ -331,7 +336,7 @@ METADATAS = {
 all_paths = hf.get_all_folder_paths('../raw_data')
 # all_paths = hf.filter_paths_by_subpaths(all_paths, ['Physio_Uebungen/Einfache_Uebung', 'Physio_Uebungen/Komplexe_Uebung'])
 all_paths = hf.filter_paths_by_subpaths(all_paths, ['Gehen/Mit_Orthese', 'Gehen/Ohne_Einschraenkung', 'Physio_Uebungen/Einfache_Uebung', 'Physio_Uebungen/Komplexe_Uebung'])
-# all_paths = hf.filter_paths_by_subpaths(all_paths, ['Hans/Physio_Uebungen/Einfache_Uebung'])
+#all_paths = hf.filter_paths_by_subpaths(all_paths, ['Gregers/Gehen/Ohne_Einschraenkung'])
 # all_paths = sorted(hf.remove_paths_with_patterns(all_paths, ['Zebris', 'XSens', 'QTM', 'models', 'IMU_IK_results', 'Latifah', 'Hamit', 'Laurel',
 #                                                              'Darryl', 'Austra', 'Jung-Hee', 'Rehema', 'Etsuko', 'Yaxkin', 'Elodie', 'Gregers', 'Rushda',
 #                                                              'Marquise', 'Julia', 'Katee', 'Neves']))

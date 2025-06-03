@@ -168,7 +168,7 @@ def perform_inverse_kinematics_w_imu_data(measurement_path, cfg, imu_sample_rate
         # 1. IMU Transformation: rotate imu to match opensim cs
         R_imu = R.from_euler('x', -90, degrees=True) * R_imu
 
-        q_heading_correction = calculate_heading_correction(marker_data, infos['marker_names'], R_imu, pos)
+        q_heading_correction = hfp.calculate_heading_correction(marker_data, infos['marker_names'], R_imu, pos)
 
         # 2. IMU Transformation: apply heading correction
         R_imu_correct_heading = q_heading_correction * R_imu

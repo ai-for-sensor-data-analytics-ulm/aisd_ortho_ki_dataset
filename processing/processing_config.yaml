@@ -2,6 +2,8 @@ path_template_model: '../opensim_templates/model_template/Unrestricted_Full_Body
 path_template_scaling_settings: '../opensim_templates/template_scaling_settings.xml'
 imu_samplerate: 100
 process_subjects:
-  - all
+  - neves
+  - julia
 process_exercises:
-  - all
+  - ng
+  - rd
