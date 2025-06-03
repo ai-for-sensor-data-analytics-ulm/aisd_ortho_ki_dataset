@@ -34,7 +34,9 @@ aisd_ortho_ki_dataset/
 ├── opensim_templates/      # Needed templates for OpenSim InverseKinematics and Scaling
 ├── docs/                   # Supplementary material, e.g., UsageNotes.md
 ├── environment.yml         # Conda environment specification
+└── UsageNotes.md           # Additional informations about the dataset and details for individual measurements
 └── README.md               # You are here
+
 ```
 ---
 This repository provides all tools necessary to reproduce the postprocessing and technical validation of the AISD-Ortho-KI dataset. Below you will find an overview of each script, how to use it, and a diagram illustrating the recommended workflow.
