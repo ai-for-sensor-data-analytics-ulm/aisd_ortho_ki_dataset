@@ -1,4 +1,4 @@
-    # AISD-Ortho-KI Dataset
+# AISD-Ortho-KI Dataset
 
 This repository accompanies the dataset and code described in the manuscript:
 
