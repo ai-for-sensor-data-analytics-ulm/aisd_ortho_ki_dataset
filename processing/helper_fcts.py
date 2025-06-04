@@ -1,11 +1,14 @@
-import shutil
-import os
-import opensim as osim
-from pathlib import Path
-import pandas as pd
-import numpy as np
-from scipy.spatial.transform import Rotation as R
+"""Utility helpers for the processing pipeline."""
+
 import logging
+import os
+import shutil
+from pathlib import Path
+
+import numpy as np
+import opensim as osim
+import pandas as pd
+from scipy.spatial.transform import Rotation as R
 
 
 logger = logging.getLogger(__name__)
@@ -15,17 +18,22 @@ IMU_TO_OPENSIM_ROTATION = R.from_euler(seq='x', angles=-90, degrees=True)
 
 
 def extract_subject_name_from_path(p: str | Path) -> str:
-    """
-    Extracts the subject name from a given path. Assumes it's the third segment (index 2).
+    """Return the subject name encoded in a path.
 
-    Parameters:
-        p (str | Path): A path object or string representing the file path.
+    Parameters
+    ----------
+    p : str or Path
+        Path containing the subject folder as the third segment.
 
-    Returns:
-        str: Subject name extracted from the path.
+    Returns
+    -------
+    str
+        The extracted subject name.
 
-    Raises:
-        ValueError: If the path is too short.
+    Raises
+    ------
+    ValueError
+        If the path does not contain enough segments.
     """
     parts = Path(p).parts
     if len(parts) < 3:
@@ -34,29 +42,37 @@ def extract_subject_name_from_path(p: str | Path) -> str:
 
 
 def extract_exercise_from_path(p: str | Path) -> str:
-    """
-    Extracts the exercise name from the last segment of a path.
+    """Return the exercise name encoded in a path.
 
-    Parameters:
-        p (str | Path): A path object or string representing the file path.
+    Parameters
+    ----------
+    p : str or Path
+        Path pointing to the exercise directory.
 
-    Returns:
-        str: Exercise name.
+    Returns
+    -------
+    str
+        The exercise name.
     """
     return Path(p).name
 
 
 def copy_xml_to_directory(xml_path: Path, new_path: Path, delete: bool = False) -> Path:
-    """
-    Copies an XML file to a new path. Optionally deletes the source file.
+    """Copy an XML file to ``new_path``.
 
-    Parameters:
-        xml_path (Path): Original XML file.
-        new_path (Path): Destination path (including filename).
-        delete (bool): If True, deletes the original file after copying.
+    Parameters
+    ----------
+    xml_path : Path
+        Source XML file.
+    new_path : Path
+        Destination including the new file name.
+    delete : bool, optional
+        If ``True`` delete the original file after copying.
 
-    Returns:
-        Path: Path to the copied file.
+    Returns
+    -------
+    Path
+        Path to the copied file.
     """
     new_path = shutil.copy2(xml_path, new_path)
     if delete:
@@ -64,13 +80,15 @@ def copy_xml_to_directory(xml_path: Path, new_path: Path, delete: bool = False) 
     return Path(new_path)
 
 
-def change_model_name(model_path: Path, new_model_name: str):
-    """
-    Loads an OpenSim model, changes its name, and overwrites the file.
+def change_model_name(model_path: Path, new_model_name: str) -> None:
+    """Change the name of an OpenSim model file.
 
-    Parameters:
-        model_path (Path): Path to the .osim file.
-        new_model_name (str): New name to assign to the model.
+    Parameters
+    ----------
+    model_path : Path
+        Path to the ``.osim`` file.
+    new_model_name : str
+        New model name.
     """
     model = osim.Model(str(model_path))
     model.setName(new_model_name)
@@ -78,18 +96,29 @@ def change_model_name(model_path: Path, new_model_name: str):
     return
 
 
-def write_to_mot_file(data: pd.DataFrame, header: list[str], filepath: Path, filename: str) -> bool:
-    """
-    Writes a .mot (motion) file in OpenSim format with given header and data.
+def write_to_mot_file(
+    data: pd.DataFrame,
+    header: list[str],
+    filepath: Path,
+    filename: str,
+) -> bool:
+    """Write data to a ``.mot`` file.
 
-    Parameters:
-        data (pd.DataFrame): The motion data (time + channels).
-        header (list[str]): List of header lines to write at the top of the file.
-        filepath (Path): Directory where the file will be saved.
-        filename (str): Name of the output file.
+    Parameters
+    ----------
+    data : pandas.DataFrame
+        Motion data with time and channel columns.
+    header : list[str]
+        Header lines to prepend to the file.
+    filepath : Path
+        Directory for the output file.
+    filename : str
+        Name of the resulting file.
 
-    Returns:
-        bool: True if successful.
+    Returns
+    -------
+    bool
+        ``True`` on success.
     """
     filepath = Path(filepath)
     filepath.mkdir(parents=True, exist_ok=True)
@@ -105,14 +134,17 @@ def write_to_mot_file(data: pd.DataFrame, header: list[str], filepath: Path, fil
 
 
 def get_all_folder_paths(directory: Path | str) -> set[str]:
-    """
-    Recursively collects all subfolder paths from a given directory.
+    """Recursively collect all subfolder paths.
 
-    Parameters:
-        directory (Path | str): Root directory to search.
+    Parameters
+    ----------
+    directory : Path or str
+        Root directory to search.
 
-    Returns:
-        set[str]: Set of folder paths (as strings).
+    Returns
+    -------
+    set[str]
+        Set of folder paths as strings.
     """
     folder_paths = set()
     for root, dirs, _ in os.walk(directory):
@@ -123,15 +155,19 @@ def get_all_folder_paths(directory: Path | str) -> set[str]:
 
 
 def filter_paths_by_subpaths(folder_paths: set[str], subpaths: list[str]) -> set[str]:
-    """
-    Filters paths to include only those that contain one of the given substrings.
+    """Return only paths that contain any of ``subpaths``.
 
-    Parameters:
-        folder_paths (set): Set of folder paths.
-        subpaths (list): List of substrings to search for.
+    Parameters
+    ----------
+    folder_paths : set[str]
+        Paths to filter.
+    subpaths : list[str]
+        Substrings to search for.
 
-    Returns:
-        set[str]: Filtered set of matching paths.
+    Returns
+    -------
+    set[str]
+        Filtered set of matching paths.
     """
 
     filtered_paths = set()
@@ -142,33 +178,43 @@ def filter_paths_by_subpaths(folder_paths: set[str], subpaths: list[str]) -> set
 
 
 def remove_paths_with_patterns(folder_paths: set[str], patterns: list[str]) -> set[str]:
-    """
-    Removes all paths that contain any of the specified patterns.
+    """Remove all paths that contain any of the given patterns.
 
-    Parameters:
-        folder_paths (set): Set of folder paths.
-        patterns (list): List of substrings; any path containing one will be excluded.
+    Parameters
+    ----------
+    folder_paths : set[str]
+        Collection of paths.
+    patterns : list[str]
+        Substrings that cause a path to be dropped if present.
 
-    Returns:
-        set[str]: Filtered set of paths.
+    Returns
+    -------
+    set[str]
+        Filtered set of paths.
     """
     filtered_paths = {path for path in folder_paths if not any(pattern in path for pattern in patterns)}
     return filtered_paths
 
 
 def read_trc_file(filename: str) -> pd.DataFrame:
-    """
-    Reads a .trc (marker trajectory) file in OpenSim format and returns a DataFrame.
+    """Read a Qualisys ``.trc`` file.
 
-    Parameters:
-        filename (str): Path to the .trc file.
+    Parameters
+    ----------
+    filename : str
+        Path to the ``.trc`` file.
 
-    Returns:
-        pd.DataFrame: Marker positions with columns ['Time', 'marker1_x', 'marker1_y', ..., 'markerN_z'].
+    Returns
+    -------
+    pandas.DataFrame
+        Marker positions with columns ``['Time', '<marker>_x', '<marker>_y', '<marker>_z']``.
 
-    Raises:
-        FileNotFoundError: If the file does not exist.
-        ValueError: If the data lines do not match expected column format.
+    Raises
+    ------
+    FileNotFoundError
+        If the file does not exist.
+    ValueError
+        If the data lines do not match the expected column format.
     """
     if not os.path.exists(filename):
         logger.error(f"TRC file not found: {filename}")
@@ -196,34 +242,43 @@ def read_trc_file(filename: str) -> pd.DataFrame:
 
 
 def extract_marker_coordinates(marker_data: pd.DataFrame, marker_name: str, pos: int) -> np.ndarray:
-    """
-    Extracts the 3D coordinates of a specific marker at a given frame index.
+    """Return the coordinates of ``marker_name`` at ``pos``.
 
-    Parameters:
-        marker_data (pd.DataFrame): Marker data as DataFrame.
-        marker_name (str): Name of the marker (without _x/_y/_z).
-        pos (int): Row index (frame number) to extract.
+    Parameters
+    ----------
+    marker_data : pandas.DataFrame
+        DataFrame containing marker columns.
+    marker_name : str
+        Name of the marker without axis suffix.
+    pos : int
+        Row index to extract.
 
-    Returns:
-        np.ndarray: 3D coordinates [x, y, z] of the marker at the specified frame.
+    Returns
+    -------
+    numpy.ndarray
+        Array ``[x, y, z]`` of marker coordinates.
     """
     return marker_data[[f'{marker_name}_{axis}' for axis in ['x', 'y', 'z']]].iloc[pos].to_numpy()
 
 
 def calculate_heading_correction(marker_data: pd.DataFrame, marker_names: list[str], R_imu: R, pos: str) -> R:
-    """
-    Computes a heading correction rotation for an IMU based on marker geometry in a static pose.
+    """Compute the heading correction for an IMU.
 
-    The correction aligns the IMU heading with the segment's marker-defined orientation.
+    Parameters
+    ----------
+    marker_data : pandas.DataFrame
+        Marker positions for a static pose.
+    marker_names : list[str]
+        Names of the markers defining the local frame.
+    R_imu : Rotation
+        Orientation of the IMU.
+    pos : str
+        Segment name. ``"toes_r"`` triggers a special case.
 
-    Parameters:
-        marker_data (pd.DataFrame): Marker positions for a static frame (e.g., first frame).
-        marker_names (list[str]): List of 3 marker names defining the local segment frame.
-        R_imu (Rotation): Rotation object (scipy.spatial.transform.Rotation) from IMU.
-        pos (str): Segment name, used to apply special rules (e.g., for 'toes_r').
-
-    Returns:
-        Rotation: A scipy Rotation object representing the heading correction (rotation around Y-axis).
+    Returns
+    -------
+    Rotation
+        Heading correction as a rotation about the y-axis.
     """
     i = 0
 

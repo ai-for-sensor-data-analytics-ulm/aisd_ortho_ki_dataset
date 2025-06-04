@@ -1,25 +1,32 @@
-import opensim as osim
-from pathlib import Path
-import numpy as np
+"""Utilities for running IMU-based inverse kinematics."""
+
+import logging
 import os
+from pathlib import Path
+
+import numpy as np
+import opensim as osim
 import pandas as pd
 from scipy.spatial.transform import Rotation as R
+
 import helper_fcts as hf
-import logging
 
 osim.Logger.setLevel(osim.Logger.Level_Info)
 logger = logging.getLogger(__name__)
 
 
 def extract_segment_orientations(model_path: str) -> dict[str, R]:
-    """
-    Extracts global segment orientations (rotation matrices) from an OpenSim model.
+    """Load global segment orientations from an OpenSim model.
 
-    Parameters:
-        model_path (str): Path to the .osim model file.
+    Parameters
+    ----------
+    model_path : str
+        Path to the ``.osim`` model file.
 
-    Returns:
-        dict[str, Rotation]: Dictionary mapping segment (body) names to scipy Rotation objects.
+    Returns
+    -------
+    dict[str, Rotation]
+        Mapping of segment names to rotations.
     """
     model = osim.Model(model_path)
     state = model.initSystem()
@@ -39,17 +46,23 @@ def extract_segment_orientations(model_path: str) -> dict[str, R]:
 
 
 def load_marker_data(ik_dir: Path, subject_name: str, exercise: str, start_ts: float) -> pd.DataFrame:
-    """
-    Loads and filters marker data from a .trc file for a specific subject and exercise.
+    """Load and crop marker data for an exercise.
 
-    Parameters:
-        ik_dir (Path): Path to the directory containing inverse kinematics input files.
-        subject_name (str): Unique identifier of the subject (e.g., 'subject01').
-        exercise (str): Name of the exercise (e.g., 'walking').
-        start_ts (float): Timestamp (in seconds) from which the marker data should be considered.
+    Parameters
+    ----------
+    ik_dir : Path
+        Directory containing inverse kinematics input files.
+    subject_name : str
+        Subject identifier.
+    exercise : str
+        Exercise name.
+    start_ts : float
+        Timestamp from which data should be used.
 
-    Returns:
-        pd.DataFrame: Marker data as a DataFrame, filtered to include only data from `start_ts` onward.
+    Returns
+    -------
+    pandas.DataFrame
+        Marker data starting at ``start_ts``.
     """
     marker_path = ik_dir / f'marker_data_osim_format_{subject_name}_{exercise}.trc'
     marker_data = hf.read_trc_file(str(marker_path))
@@ -57,39 +70,50 @@ def load_marker_data(ik_dir: Path, subject_name: str, exercise: str, start_ts: f
 
 
 def load_imu_data(measurement_path: Path, subject_name: str, exercise: str, start_ts: float) -> pd.DataFrame:
-    """
-    Loads and filters IMU quaternion data from a CSV file for a specific subject and exercise.
+    """Load and crop IMU quaternion data.
 
-    Parameters:
-        measurement_path (Path): Base path to measurement files.
-        subject_name (str): Subject identifier.
-        exercise (str): Name of the exercise.
-        start_ts (float): Start timestamp (in seconds) to crop the IMU data.
+    Parameters
+    ----------
+    measurement_path : Path
+        Directory containing the raw CSV file.
+    subject_name : str
+        Subject identifier.
+    exercise : str
+        Exercise name.
+    start_ts : float
+        Timestamp from which to keep samples.
 
-    Returns:
-        pd.DataFrame: Filtered IMU data starting from `start_ts`.
+    Returns
+    -------
+    pandas.DataFrame
+        IMU data starting at ``start_ts``.
     """
     imu_data = pd.read_csv(measurement_path / f'xsens_imu_data_{subject_name}_{exercise}.csv')
     return imu_data[imu_data['time [s]'] >= start_ts].reset_index(drop=True)
 
 
 def compute_registered_imu_orientations(cfg, marker_data, imu_data, segment_orientations) -> dict:
-    """
-    Registers raw IMU orientations to the OpenSim segment coordinate systems.
+    """Register raw IMU orientations to the OpenSim segment frames.
 
-    This includes:
-    - Rotation into OpenSim convention
-    - Heading correction using a static pose and marker positions
-    - Segment calibration using OpenSim model orientation
+    The procedure rotates the raw data into the OpenSim convention, applies a
+    heading correction using a static pose and finally calibrates each segment
+    with its orientation from the model.
 
-    Parameters:
-        cfg (dict): Configuration dictionary containing 'inverse_kinematics' with IMU and marker mappings.
-        marker_data (pd.DataFrame): Filtered Qualisys marker data for static pose alignment.
-        imu_data (pd.DataFrame): Time-aligned IMU quaternion data.
-        segment_orientations (dict): Reference segment orientations from the OpenSim model.
+    Parameters
+    ----------
+    cfg : dict
+        Configuration containing an ``inverse_kinematics`` section.
+    marker_data : pandas.DataFrame
+        Marker data for the static pose.
+    imu_data : pandas.DataFrame
+        IMU quaternion time series.
+    segment_orientations : dict
+        Reference segment orientations from the model.
 
-    Returns:
-        dict: Dictionary mapping segment names to numpy arrays of registered quaternion data (Nx4).
+    Returns
+    -------
+    dict
+        Mapping of segment names to arrays of registered quaternions (``N x 4``).
     """
     if 'inverse_kinematics' not in cfg:
         logger.error("Missing 'inverse_kinematics' section in config")
@@ -111,16 +135,21 @@ def compute_registered_imu_orientations(cfg, marker_data, imu_data, segment_orie
 
 
 def build_imu_dataframe(registered_imu_data: dict, cfg, time: np.ndarray) -> pd.DataFrame:
-    """
-    Constructs a DataFrame with registered IMU quaternion components for export.
+    """Create a DataFrame with registered IMU quaternions.
 
-    Parameters:
-        registered_imu_data (dict): Dictionary with quaternion arrays (shape Nx4) per segment.
-        cfg (dict): Configuration containing IMU name mappings.
-        time (np.ndarray): 1D array of time values corresponding to each quaternion row.
+    Parameters
+    ----------
+    registered_imu_data : dict
+        Mapping of segment names to quaternion arrays.
+    cfg : dict
+        Configuration containing IMU name mappings.
+    time : numpy.ndarray
+        Time vector corresponding to the quaternions.
 
-    Returns:
-        pd.DataFrame: A DataFrame with time column and registered quaternion columns.
+    Returns
+    -------
+    pandas.DataFrame
+        DataFrame with time column and quaternion columns.
     """
     df_data = []
     col_names = []
@@ -137,18 +166,25 @@ def build_imu_dataframe(registered_imu_data: dict, cfg, time: np.ndarray) -> pd.
 
 def write_imu_quat_sto(registered_imu_data: dict, time: np.ndarray, subject_name: str, exercise: str,
                        output_path: Path):
-    """
-    Writes the registered IMU data to an OpenSim-compatible .sto file.
+    """Write registered IMU quaternions to an ``.sto`` file.
 
-    Parameters:
-        registered_imu_data (dict): Dictionary with quaternion arrays (Nx4) per segment.
-        time (np.ndarray): Time vector for the motion.
-        subject_name (str): Subject identifier used in filename.
-        exercise (str): Exercise name used in filename.
-        output_path (Path): Directory where the .sto file will be saved.
+    Parameters
+    ----------
+    registered_imu_data : dict
+        Mapping of segment names to quaternion arrays.
+    time : numpy.ndarray
+        Time vector of the motion.
+    subject_name : str
+        Subject identifier used in the filename.
+    exercise : str
+        Exercise name used in the filename.
+    output_path : Path
+        Directory where the file is written.
 
-    Returns:
-        str: The filename of the written .sto file (not full path).
+    Returns
+    -------
+    str
+        Name of the created ``.sto`` file.
     """
     header = [
         'DataRate=100', '\nDataType=Quaternion', '\nversion=3',
@@ -166,15 +202,20 @@ def write_imu_quat_sto(registered_imu_data: dict, time: np.ndarray, subject_name
 
 def run_inverse_kinematics_tool(model_path: Path, orientations_path: Path, results_dir: Path, start_ts: float,
                                 stop_ts: float):
-    """
-    Runs OpenSim's IMU Inverse Kinematics tool using the given input and saves results.
+    """Run OpenSim's IMU Inverse Kinematics tool.
 
-    Parameters:
-        model_path (Path): Path to the scaled OpenSim model (.osim).
-        orientations_path (Path): Path to the .sto file containing registered IMU orientations.
-        results_dir (Path): Directory where IK results will be saved.
-        start_ts (float): Start timestamp for the IK computation.
-        stop_ts (float): Stop timestamp for the IK computation.
+    Parameters
+    ----------
+    model_path : Path
+        Path to the scaled model.
+    orientations_path : Path
+        ``.sto`` file with registered IMU orientations.
+    results_dir : Path
+        Directory for the IK results.
+    start_ts : float
+        Start timestamp for the tool.
+    stop_ts : float
+        Stop timestamp for the tool.
     """
     imu_ik = osim.IMUInverseKinematicsTool()
     imu_ik.set_model_file(str(model_path))
@@ -187,15 +228,20 @@ def run_inverse_kinematics_tool(model_path: Path, orientations_path: Path, resul
 
 def perform_inverse_kinematics_w_imu_data(measurement_path: Path, cfg: dict, imu_sample_rate: float, subject_name: str,
                                           exercise: str):
-    """
-    Executes the inverse kinematics pipeline using IMU data and marker-based heading correction.
+    """Run the IMU-based inverse kinematics pipeline.
 
-    Parameters:
-        measurement_path (Path): Path to measurement root directory.
-        cfg (dict): Configuration dictionary containing marker-IMU mapping and timestamps.
-        imu_sample_rate (float): Sampling rate of the IMU data (Hz).
-        subject_name (str): Name/ID of the subject.
-        exercise (str): Name of the exercise.
+    Parameters
+    ----------
+    measurement_path : Path
+        Path to the measurement directory.
+    cfg : dict
+        Configuration dictionary with marker/IMU mapping and timestamps.
+    imu_sample_rate : float
+        Sampling rate of the IMU data in hertz.
+    subject_name : str
+        Identifier of the subject.
+    exercise : str
+        Name of the exercise.
     """
     start_ts = cfg['start_ts']
     ik_dir = measurement_path / 'ik_imus'

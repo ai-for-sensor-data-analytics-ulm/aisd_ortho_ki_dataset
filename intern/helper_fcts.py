@@ -1,15 +1,57 @@
 import shutil
 import os
+from pathlib import Path
+from typing import Iterable, List, Set
+import pandas as pd
 
 
-def copy_xml_to_directory(xml_path, new_directory, delete=False):
+def copy_xml_to_directory(xml_path: Path, new_directory: Path, delete: bool = False) -> Path:
+    """Copy an XML file to a new directory.
+
+    Parameters
+    ----------
+    xml_path : Path
+        Path to the source XML file.
+    new_directory : Path
+        Destination directory.
+    delete : bool, optional
+        If ``True`` delete the source after copying.
+
+    Returns
+    -------
+    Path
+        Path to the copied XML file.
+    """
     shutil.copy2(xml_path, new_directory)
     if delete:
         os.remove(xml_path)
     return new_directory
 
 
-def write_to_mot_file(data, header, filepath, filename):
+def write_to_mot_file(
+    data: pd.DataFrame,
+    header: List[str],
+    filepath: Path,
+    filename: str,
+) -> bool:
+    """Write motion data to a ``.mot`` file.
+
+    Parameters
+    ----------
+    data : pandas.DataFrame
+        Data to write.
+    header : list[str]
+        Lines to prepend as file header.
+    filepath : Path
+        Directory for the output file.
+    filename : str
+        Name of the output file.
+
+    Returns
+    -------
+    bool
+        ``True`` if the file was written successfully.
+    """
     if not os.path.exists(filepath):
         os.makedirs(filepath, exist_ok=True)
     f = open(filepath / filename, 'w')
@@ -34,8 +76,20 @@ def write_to_mot_file(data, header, filepath, filename):
     return True
 
 
-def get_all_folder_paths(directory):
-    folder_paths = set()  # Using a set removes duplicates automatically.
+def get_all_folder_paths(directory: Path | str) -> Set[str]:
+    """Recursively collect all subfolder paths of ``directory``.
+
+    Parameters
+    ----------
+    directory : Path or str
+        Root directory.
+
+    Returns
+    -------
+    set[str]
+        Set of folder paths.
+    """
+    folder_paths: Set[str] = set()
     for root, dirs, _ in os.walk(directory):
         for d in dirs:
             folder_path = os.path.join(root, d)
@@ -43,36 +97,42 @@ def get_all_folder_paths(directory):
     return folder_paths
 
 
-def filter_paths_by_subpaths(folder_paths, subpaths):
-    """
-    Filters the folder paths, returning only those that contain one of the specified subpath strings.
-    The matching is done using a substring search.
+def filter_paths_by_subpaths(folder_paths: Iterable[str], subpaths: List[str]) -> Set[str]:
+    """Return only paths containing one of the given substrings.
 
-    Parameters:
-        folder_paths (iterable): The folder paths to filter.
-        subpaths (list): A list of sub-p strings to search for in each folder p.
+    Parameters
+    ----------
+    folder_paths : Iterable[str]
+        Paths to filter.
+    subpaths : list[str]
+        Substrings to search for.
 
-    Returns:
-        set: A set of filtered folder paths.
+    Returns
+    -------
+    set[str]
+        Filtered folder paths.
     """
-    filtered_paths = set()
+    filtered_paths: Set[str] = set()
     for path in folder_paths:
         if any(sub in path for sub in subpaths):
             filtered_paths.add(path)
     return filtered_paths
 
 
-def remove_paths_with_patterns(folder_paths, patterns):
-    """
-    Entfernt aus den übergebenen Pfaden alle, bei denen mindestens eines der angegebenen Muster vorkommt.
+def remove_paths_with_patterns(folder_paths: Iterable[str], patterns: List[str]) -> Set[str]:
+    """Remove all paths that contain any of the given patterns.
 
-    Parameter:
-        folder_paths (iterable): Eine Sammlung von Pfaden (z.B. Liste oder Set).
-        patterns (list): Eine Liste von Mustern (Strings), bei denen, falls sie im Pfad vorkommen,
-                         der Pfad entfernt werden soll.
+    Parameters
+    ----------
+    folder_paths : Iterable[str]
+        Collection of folder paths.
+    patterns : list[str]
+        Substrings that, if found in a path, cause its removal.
 
-    Returns:
-        set: Ein Set von Pfaden, in denen keines der Muster vorkommt.
+    Returns
+    -------
+    set[str]
+        Filtered paths without the specified patterns.
     """
-    filtered_paths = {path for path in folder_paths if not any(pattern in path for pattern in patterns)}
+    filtered_paths: Set[str] = {path for path in folder_paths if not any(pattern in path for pattern in patterns)}
     return filtered_paths

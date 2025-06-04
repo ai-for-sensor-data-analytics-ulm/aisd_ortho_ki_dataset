@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from minio import Minio
 import io
 
@@ -28,21 +29,31 @@ class MinIOConnector:
             print('select correct bucket name!')
             self.list_buckets()
 
-    def __bucket_exists(self, name):
-        """
-        This method checks if a bucket exists
+    def __bucket_exists(self, name: str) -> bool:
+        """Check whether a bucket exists.
 
-        :return: Boolean (True = bucket exists)
+        Parameters
+        ----------
+        name : str
+            Bucket name.
+
+        Returns
+        -------
+        bool
+            ``True`` if the bucket exists.
         """
         found = self.__minioClient.bucket_exists(name)
-        return found#
+        return found
 
-    def download_folder(self, folder_name, local_directory):
-        """
-        This method downloads a folder and its files from Minio
+    def download_folder(self, folder_name: str, local_directory: str) -> None:
+        """Download a folder and its files from MinIO.
 
-        :param folder_name: The name of the folder in Minio
-        :param local_directory: The local directory to download the folder to
+        Parameters
+        ----------
+        folder_name : str
+            Name of the folder in MinIO.
+        local_directory : str
+            Local directory to download the content to.
         """
         for obj in self.__minioClient.list_objects(self.bucket_name, prefix=folder_name, recursive=True):
             local_file_path = os.path.join(local_directory, obj.object_name)
@@ -52,7 +63,26 @@ class MinIOConnector:
                 for d in self.__minioClient.get_object(self.bucket_name, obj.object_name):
                     file_data.write(d)
 
-    def save_pickle(self, pickle_data, object_name, bucket_name=None, content_type="application/octet-stream"):
+    def save_pickle(
+        self,
+        pickle_data: bytes,
+        object_name: str,
+        bucket_name: str | None = None,
+        content_type: str = "application/octet-stream",
+    ) -> None:
+        """Save binary pickle data to MinIO.
+
+        Parameters
+        ----------
+        pickle_data : bytes
+            Data blob to upload.
+        object_name : str
+            Target object name.
+        bucket_name : str, optional
+            Destination bucket, defaults to the connector bucket.
+        content_type : str, optional
+            MIME type for the object.
+        """
         if bucket_name == None:
             bucket_name = self.bucket_name
 
@@ -67,7 +97,31 @@ class MinIOConnector:
             content_type=content_type)
         return
 
-    def load_ml_dataset(self, minio_path, file_name, save_path, bucket_name=None):
+    def load_ml_dataset(
+        self,
+        minio_path: str,
+        file_name: str,
+        save_path: Path,
+        bucket_name: str | None = None,
+    ) -> tuple:
+        """Load or download a machine learning dataset pickle.
+
+        Parameters
+        ----------
+        minio_path : str
+            Path in the bucket.
+        file_name : str
+            File name of the dataset.
+        save_path : Path
+            Local directory for caching.
+        bucket_name : str, optional
+            Bucket to use.
+
+        Returns
+        -------
+        tuple
+            ``(X, config)`` tuple loaded from the pickle file.
+        """
         if not os.path.isfile(save_path / file_name):
             print('Attempting to download ', str(minio_path/file_name), ' to ', str(save_path/file_name))
             if bucket_name == None:
@@ -81,7 +135,14 @@ class MinIOConnector:
         dataset = pickle.load(open(save_path / file_name, 'rb'))
         return dataset['X'], dataset['config']
 
-    def download_hdf5_dataset(self, minio_path, file_name, save_path, bucket_name=None):
+    def download_hdf5_dataset(
+        self,
+        minio_path: str,
+        file_name: str,
+        save_path: Path,
+        bucket_name: str | None = None,
+    ) -> None:
+        """Download an HDF5 dataset file if not present locally."""
         if not os.path.isfile(save_path / file_name):
             print('Attempting to download ', str(minio_path/file_name), ' to ', str(save_path/file_name))
             if bucket_name == None:
@@ -92,7 +153,13 @@ class MinIOConnector:
                                                       progress=progress.Progress())
         return
 
-    def save_hdf5_to_minio(self, hdf5_filepath, object_name, bucket_name):
+    def save_hdf5_to_minio(
+        self,
+        hdf5_filepath: str,
+        object_name: str,
+        bucket_name: str,
+    ) -> None:
+        """Upload a local HDF5 file to MinIO."""
         if bucket_name == None:
             bucket_name = self.bucket_name
         self.__minioClient.fput_object(bucket_name=bucket_name,

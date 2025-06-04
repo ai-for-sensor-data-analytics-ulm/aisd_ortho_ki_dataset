@@ -1,12 +1,14 @@
-import shutil
-from pathlib import Path
-import opensim as osim
-import helper_fcts as hf
-from xml.etree import ElementTree as ET
-import os
-import logging
-import sys
+"""Utilities for scaling OpenSim models using marker data."""
+
 import contextlib
+import logging
+import os
+from pathlib import Path
+from xml.etree import ElementTree as ET
+
+import opensim as osim
+import shutil
+import helper_fcts as hf
 
 logger = logging.getLogger(__name__)
 # sys.stderr.write = logger.error
@@ -14,13 +16,15 @@ logger = logging.getLogger(__name__)
 # osim.Logger.setLevel(osim.Logger.Level_Info)
 
 
-def change_default_pose(model_path: Path, mot_file_path: Path):
-    """
-    Sets the default pose in an OpenSim model based on the first frame of a .mot motion file.
+def change_default_pose(model_path: Path, mot_file_path: Path) -> None:
+    """Set the default pose of a model from a ``.mot`` file.
 
-    Parameters:
-        model_path (Path): Path to the .osim model to be modified.
-        mot_file_path (Path): Path to the motion (.mot) file with joint angles.
+    Parameters
+    ----------
+    model_path : Path
+        Path to the ``.osim`` model to modify.
+    mot_file_path : Path
+        Motion file defining the desired pose.
     """
     model = osim.Model(str(model_path))
     motion = osim.Storage(str(mot_file_path))
@@ -41,31 +45,42 @@ def change_default_pose(model_path: Path, mot_file_path: Path):
     return
 
 
-def modify_scaling_setup(xml_path: Path,
-                         path_baseline_model: Path,
-                         path_scaled_model: Path,
-                         path_scaled_model_w_markers: str,
-                         path_trc_file: str,
-                         path_output_mot_file: str,
-                         path_output_marker_file: str,
-                         time_range: str,
-                         no_ik_for: list[str],
-                         no_scaling_for: list[str]):
-    """
-    Modifies an OpenSim scaling XML setup file by setting input/output paths, time ranges,
-    and disabling specified IK/scaling markers.
+def modify_scaling_setup(
+    xml_path: Path,
+    path_baseline_model: Path,
+    path_scaled_model: Path,
+    path_scaled_model_w_markers: str,
+    path_trc_file: str,
+    path_output_mot_file: str,
+    path_output_marker_file: str,
+    time_range: str,
+    no_ik_for: list[str],
+    no_scaling_for: list[str],
+) -> None:
+    """Modify a scaling setup XML file.
 
-    Parameters:
-        xml_path (Path): Path to the XML file to modify.
-        path_baseline_model (Path): Path to the unscaled model.
-        path_scaled_model (Path): Output path for scaled model.
-        path_scaled_model_w_markers (str): Path (as string) for model with markers.
-        path_trc_file (str): Relative path to the input TRC file.
-        path_output_mot_file (str): Path to output motion file.
-        path_output_marker_file (str): Path to output marker error file.
-        time_range (str): Time range for scaling and marker placement (e.g. "0.0 0.02").
-        no_ik_for (list[str]): List of marker names to disable in IK task set.
-        no_scaling_for (list[str]): List of markers to disable in scaling.
+    Parameters
+    ----------
+    xml_path : Path
+        Path to the XML file to modify.
+    path_baseline_model : Path
+        Path to the unscaled model.
+    path_scaled_model : Path
+        Output path for the scaled model.
+    path_scaled_model_w_markers : str
+        Path of the model with markers.
+    path_trc_file : str
+        Relative path to the input TRC file.
+    path_output_mot_file : str
+        Path to the output motion file.
+    path_output_marker_file : str
+        Path to the output marker error file.
+    time_range : str
+        Time range for scaling and marker placement.
+    no_ik_for : list[str]
+        Marker names to disable in the IK task set.
+    no_scaling_for : list[str]
+        Markers to disable for scaling.
     """
     tree = ET.parse(xml_path)
     root = tree.getroot()
@@ -108,17 +123,23 @@ def scale_model_with_markers(measurement_path: Path,
                              path_template_scaling_settings: Path,
                              cfg: dict,
                              subject_name: str,
-                             exercise: str):
-    """
-    Performs model scaling and static pose estimation using marker data and scaling settings.
+                             exercise: str) -> None:
+    """Scale the model and estimate a static pose using markers.
 
-    Parameters:
-        measurement_path (Path): Path to the subject's measurement folder.
-        path_template_model (Path): Path to the unscaled .osim template model.
-        path_template_scaling_settings (Path): Path to the XML template for scaling.
-        cfg (dict): Configuration dict containing 'start_ts' and scaling marker options.
-        subject_name (str): Subject ID.
-        exercise (str): Exercise name (used in filenames).
+    Parameters
+    ----------
+    measurement_path : Path
+        Path to the subject's measurement folder.
+    path_template_model : Path
+        Path to the unscaled template model.
+    path_template_scaling_settings : Path
+        Path to the XML scaling template.
+    cfg : dict
+        Configuration with ``start_ts`` and marker options.
+    subject_name : str
+        Subject identifier.
+    exercise : str
+        Exercise name used in filenames.
     """
     start_ts = cfg['start_ts']
     ik_path = measurement_path / 'ik_imus'

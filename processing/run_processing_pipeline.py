@@ -11,13 +11,32 @@ from tqdm import tqdm
 
 
 def load_config(config_path: Path) -> dict:
-    """Load YAML configuration file."""
+    """Load a YAML configuration file.
+
+    Parameters
+    ----------
+    config_path : Path
+        Path to the YAML file.
+
+    Returns
+    -------
+    dict
+        Parsed configuration dictionary.
+    """
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
 
 
-def process_subject(measurement_dir: Path, cfg: dict):
-    """Runs the processing pipeline for a single subject + exercise."""
+def process_subject(measurement_dir: Path, cfg: dict) -> None:
+    """Run the processing pipeline for a single measurement.
+
+    Parameters
+    ----------
+    measurement_dir : Path
+        Directory containing the measurement data.
+    cfg : dict
+        Global configuration dictionary.
+    """
     subject_name = hf.extract_subject_name_from_path(measurement_dir)
     exercise = hf.extract_exercise_from_path(measurement_dir)
 
@@ -43,8 +62,16 @@ def process_subject(measurement_dir: Path, cfg: dict):
         logging.error(f"Error processing {subject_name}/{exercise}: {e}")
 
 
-def run_batch_pipeline(root_path: Path, config_path: Path):
-    """Batch-processes all subjects/exercises in a root directory."""
+def run_batch_pipeline(root_path: Path, config_path: Path) -> None:
+    """Process all subject/exercise combinations in a directory.
+
+    Parameters
+    ----------
+    root_path : Path
+        Root directory with measurement folders.
+    config_path : Path
+        Path to the YAML configuration file.
+    """
     cfg = load_config(config_path)
 
     all_paths = hf.get_all_folder_paths(root_path)
