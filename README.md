@@ -1,12 +1,16 @@
-# AISD-Ortho-KI Dataset
+> ⚠️ **Repository under construction**
+### Publication Status
+This repository accompanies the manuscript:
 
-This repository accompanies the dataset and code described in the manuscript:
+**Spilz, A., Oppel, H., Werner, J., Stucke-Straub, K., Capanni, F., Munz, M.
+> *GAITEX: Human motion dataset from impaired gait and rehabilitation exercises of inertial and optical sensor data*  
+> Status: Under review 
+Preprint: https://zenodo.org/records/15792584
 
-**Spilz, A., Oppel, H., Werner, J., Munz, M.**  
-*“TBD"*  
-→ [Zenodo DOI – to be inserted]
+The repository will be finalized and versioned upon acceptance.
 
----
+
+# GAITEX
 
 ## Overview
 
