@@ -6,6 +6,7 @@ This repository accompanies the manuscript:
 > *GAITEX: Human motion dataset from impaired gait and rehabilitation exercises of inertial and optical sensor data*  
 > Status: Under review 
 Preprint: https://zenodo.org/records/15792584
+Dataset: https://zenodo.org/records/15729055
 
 The repository will be finalized and versioned upon acceptance.
 
